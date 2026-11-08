@@ -1,0 +1,30 @@
+#!/bin/sh
+# river runs this once at startup. It starts rivermonad as the window
+# manager; everything else (waybar, notifications...) is launched from
+# ~/.config/rivermonad/rivermonad.hs with spawnOnce.
+
+# Sessions started from GDM don't read ~/.bashrc: prefer ~/.local/bin
+# (river, rivermonad and the patched waybar live there).
+export PATH="$HOME/.local/bin:$PATH"
+export XDG_CURRENT_DESKTOP=river
+export XDG_SESSION_DESKTOP=river
+
+# Let D-Bus/systemd services (portals for screen sharing, file pickers...)
+# know about this Wayland session.
+if command -v dbus-update-activation-environment >/dev/null; then
+  dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP
+fi
+
+# Monitor resolution/scale from ~/.config/kanshi/config (also reacts to
+# monitors being plugged in). Reload after editing: pkill -x kanshi; setsid -f kanshi
+command -v kanshi >/dev/null && kanshi &
+
+# Keep the window manager running: if rivermonad crashes, start it again
+# (windows survive, river keeps them). Stop when it exits cleanly or when
+# river itself is gone.
+while :; do
+  rivermonad && break
+  [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] || break
+  echo "rivermonad crashed, restarting it" >&2
+  sleep 1
+done

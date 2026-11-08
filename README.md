@@ -101,10 +101,18 @@ cabal install exe:rivermonad
 ```
 
 River ≥ 0.4 must be built separately (see its README; it needs zig and
-wlroots). Then start the session with:
+wlroots). To try it, run it nested in your current session or from a TTY:
 
 ```sh
 river -c rivermonad
+```
+
+For a full session listed on the login screen (with a river init, kanshi
+for monitors and fixes for virtual machines), use
+[contrib/session](contrib/session/README.md):
+
+```sh
+contrib/session/install.sh --system
 ```
 
 ## Configuration

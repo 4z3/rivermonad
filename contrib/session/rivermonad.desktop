@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=river + rivermonad
+Comment=xmonad-style tiling window manager on the river Wayland compositor
+Exec=@BINDIR@/river-session
+Type=Application

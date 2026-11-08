@@ -1,0 +1,20 @@
+#!/bin/sh
+# Starts a river + rivermonad session. Point the display manager's session
+# file at this script (see rivermonad.desktop), or run it from a TTY.
+#
+# river itself then runs ~/.config/river/init, which starts rivermonad.
+
+# Sessions started from a display manager don't read ~/.bashrc; river,
+# rivermonad and friends are usually installed in ~/.local/bin.
+export PATH="$HOME/.local/bin:$PATH"
+
+# On virtio-gpu (QEMU/UTM virtual machines) wlroots draws the hardware
+# cursor upside down, so the visible tip is not where clicks land. Use a
+# software cursor there.
+for drv in /sys/class/drm/card*/device/driver; do
+  case "$(readlink "$drv" 2>/dev/null)" in
+    *virtio*) export WLR_NO_HARDWARE_CURSORS=1 ;;
+  esac
+done
+
+exec river "$@"
