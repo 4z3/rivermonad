@@ -1,0 +1,22 @@
+#!/bin/sh
+# Screenshots on river/wlroots.
+#   shot            whole screen (the output under the pointer if several)
+#   shot region     select a region with the mouse (Esc cancels)
+#   shot annotate   region, then edit it in swappy (arrows, text, blur...)
+# The image is saved in ~/Pictures/Screenshots and copied to the clipboard.
+set -e
+dir="$(xdg-user-dir PICTURES 2>/dev/null || echo "$HOME/Pictures")/Screenshots"
+mkdir -p "$dir"
+file="$dir/$(date +%Y-%m-%d_%H-%M-%S).png"
+
+case "${1:-full}" in
+  full)     grim "$file" ;;
+  region)   geom=$(slurp) || exit 0; grim -g "$geom" "$file" ;;
+  annotate) geom=$(slurp) || exit 0
+            grim -g "$geom" - | swappy -f - -o "$file"
+            [ -s "$file" ] || exit 0 ;;   # closed swappy without saving
+  *) echo "usage: shot [full|region|annotate]" >&2; exit 2 ;;
+esac
+
+wl-copy --type image/png < "$file"
+notify-send -a Screenshot -i "$file" "Screenshot" "Saved to ${file#"$HOME"/} and copied" || true

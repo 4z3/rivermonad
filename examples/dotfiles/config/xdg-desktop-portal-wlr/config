@@ -1,0 +1,5 @@
+# Screen sharing (OBS, Firefox, Meet...): pick the screen to share with the
+# mouse (click it), or a region by dragging. Esc cancels.
+[screencast]
+chooser_type=simple
+chooser_cmd=slurp -f %o -or

@@ -1,0 +1,40 @@
+// waybar for rivermonad: needs waybar with the rivermonad modules, see
+// contrib/waybar/README.md and `man waybar-rivermonad-workspaces`.
+// (Optional: this setup uses waymobar; waybar is the alternative.)
+{
+  "layer": "top",
+  "position": "top",
+  "height": 26,
+  "spacing": 4,
+
+  "modules-left": ["rivermonad/workspaces", "rivermonad/layout"],
+  "modules-center": ["rivermonad/window"],
+  "modules-right": ["cpu", "memory", "battery", "tray", "clock"],
+
+  "rivermonad/workspaces": {
+    "format": "{name}",
+    "hide-empty": true,          // like xmonad's ppHiddenNoWindows = const ""
+    "click-action": "focus"      // "view" for greedyView
+  },
+  "rivermonad/layout": {
+    "format": "{}",
+    "tooltip": false             // click: next layout
+  },
+  "rivermonad/window": {
+    "format": "{title}",
+    "max-length": 80
+  },
+
+  "cpu":     { "format": "cpu {usage}%", "interval": 5 },
+  "memory":  { "format": "mem {percentage}%", "interval": 10 },
+  "battery": {
+    "format": "bat {capacity}%",
+    "format-charging": "bat {capacity}%+",
+    "states": { "warning": 25, "critical": 10 }
+  },
+  "tray":    { "spacing": 8 },
+  "clock": {
+    "format": "{:%a %d %b  %H:%M}",
+    "tooltip-format": "<tt>{calendar}</tt>"
+  }
+}

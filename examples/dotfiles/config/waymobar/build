@@ -1,0 +1,14 @@
+#!/bin/sh
+# Compile ~/.config/waymobar/waymobar.hs against a waymobar checkout
+# ($WAYMOBAR_SRC, ~/waymobar by default). waymobar calls this with the
+# output binary as $1; when run by hand without arguments it builds the
+# binary waymobar would use.
+set -e
+CFG="$(cd "$(dirname "$0")" && pwd)"
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/waymobar"
+OUT="${1:-$CACHE/waymobar-$(uname -m)-linux}"
+mkdir -p "$(dirname "$OUT")"
+cd "${WAYMOBAR_SRC:-$HOME/waymobar}"
+exec env -u XDG_CACHE_HOME -u XDG_CONFIG_HOME cabal -v0 exec -- \
+  ghc --make -package waymobar "$CFG/waymobar.hs" -i"$CFG/lib" -threaded -v0 \
+  -outputdir "$(dirname "$OUT")/build" -o "$OUT"

@@ -1,0 +1,30 @@
+#!/bin/sh
+# Screen recording on river/wlroots; run it again to stop.
+#   screenrec          whole screen
+#   screenrec region   a region selected with the mouse
+# Videos go to ~/Videos/Recordings.
+state="${XDG_RUNTIME_DIR:-/tmp}/screenrec"
+
+if [ -f "$state" ]; then
+  pid=$(sed -n 1p "$state"); file=$(sed -n 2p "$state")
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -INT "$pid"                  # wf-recorder finishes the file on SIGINT
+    while kill -0 "$pid" 2>/dev/null; do sleep 0.1; done
+    rm -f "$state"
+    notify-send -a Recording "Recording saved" "${file#"$HOME"/}" || true
+    exit 0
+  fi
+  rm -f "$state"                      # stale (wf-recorder died)
+fi
+
+dir="$(xdg-user-dir VIDEOS 2>/dev/null || echo "$HOME/Videos")/Recordings"
+mkdir -p "$dir"
+file="$dir/$(date +%Y-%m-%d_%H-%M-%S).mp4"
+case "${1:-full}" in
+  full)   wf-recorder -f "$file" >/dev/null 2>&1 & ;;
+  region) geom=$(slurp) || exit 0
+          wf-recorder -g "$geom" -f "$file" >/dev/null 2>&1 & ;;
+  *) echo "usage: screenrec [full|region]" >&2; exit 2 ;;
+esac
+printf '%s\n%s\n' "$!" "$file" > "$state"
+notify-send -a Recording "Recording…" "Press the same keys again to stop" || true

@@ -1,0 +1,33 @@
+/* Nord-ish colours, matching examples/rivermonad.hs */
+* {
+  font-family: monospace;
+  font-size: 13px;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+}
+
+window#waybar {
+  background: #2e3440;
+  color: #d8dee9;
+}
+
+#workspaces button {
+  padding: 0 8px;
+  color: #d8dee9;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+}
+#workspaces button:hover          { background: #3b4252; box-shadow: none; }
+#workspaces button.empty          { color: #4c566a; }
+#workspaces button.visible        { color: #ebcb8b; }                 /* on another monitor */
+#workspaces button.active         { border-bottom: 2px solid #88c0d0; } /* on this monitor */
+#workspaces button.focused        { background: #88c0d0; color: #2e3440; }
+
+#layout  { padding: 0 8px; color: #ebcb8b; }
+#window  { color: #a3be8c; }
+
+#cpu, #memory, #battery, #tray, #clock { padding: 0 8px; }
+#battery.warning  { color: #ebcb8b; }
+#battery.critical { color: #bf616a; }
+#battery.charging { color: #a3be8c; }

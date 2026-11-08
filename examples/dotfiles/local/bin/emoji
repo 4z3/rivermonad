@@ -1,0 +1,16 @@
+#!/bin/sh
+# Emoji picker: type part of the name ("tree", "smile", "flag spain"),
+# pick one, and it is typed into the focused window (and copied too).
+src=/usr/share/unicode/emoji/emoji-test.txt
+list="${XDG_CACHE_HOME:-$HOME/.cache}/emoji-list.txt"
+if [ ! -s "$list" ] || [ "$src" -nt "$list" ]; then
+  mkdir -p "$(dirname "$list")"
+  # "1F333 ; fully-qualified # 🌳 E1.0 deciduous tree" -> "🌳 deciduous tree"
+  sed -n 's/^[0-9A-F ]*; fully-qualified *# \([^ ]*\) E[0-9.]* \(.*\)$/\1 \2/p' "$src" > "$list"
+fi
+choice=$(fuzzel --dmenu --prompt "emoji › " --width 44 --lines 10 < "$list") || exit 0
+emoji=${choice%% *}
+[ -n "$emoji" ] || exit 0
+printf %s "$emoji" | wl-copy
+sleep 0.15                            # let the focus return to the window
+wtype "$emoji"

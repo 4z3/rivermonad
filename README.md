@@ -122,8 +122,10 @@ contrib/session/install.sh --system
 
 ## Configuration
 
-Copy `examples/rivermonad.hs` to `~/.config/rivermonad/rivermonad.hs`. Moving
-over from xmonad mostly means:
+Copy `examples/rivermonad.hs` to `~/.config/rivermonad/rivermonad.hs`. For a
+whole desktop (bar, notifications, launcher, emoji picker, screenshots,
+recording, monitors, portals) see [examples/dotfiles](examples/dotfiles/README.md).
+Moving over from xmonad mostly means:
 
 | xmonad                          | rivermonad                          |
 |---------------------------------|-------------------------------------|

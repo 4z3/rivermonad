@@ -1,0 +1,14 @@
+#!/bin/sh
+# Compile ~/.config/rivermonad/rivermonad.hs against a rivermonad checkout
+# ($RIVERMONAD_SRC, ~/xmonad by default). rivermonad calls this with the
+# output binary as $1; when run by hand without arguments it builds the
+# binary rivermonad would use.
+set -e
+CFG="$(cd "$(dirname "$0")" && pwd)"
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/rivermonad"
+OUT="${1:-$CACHE/rivermonad-$(uname -m)-linux}"
+mkdir -p "$(dirname "$OUT")"
+cd "${RIVERMONAD_SRC:-$HOME/xmonad}"
+exec env -u XDG_CACHE_HOME -u XDG_CONFIG_HOME cabal -v0 exec -- \
+  ghc --make -package rivermonad "$CFG/rivermonad.hs" -i"$CFG/lib" -threaded -v0 \
+  -outputdir "$(dirname "$OUT")/build" -o "$OUT"
