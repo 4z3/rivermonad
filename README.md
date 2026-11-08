@@ -4,6 +4,15 @@ An xmonad-style tiling window manager for Wayland. It is to xmonad what sway is
 to i3: the same model and the same kind of Haskell configuration file, on a
 Wayland compositor.
 
+![rivermonad demo: tiling, layouts, floating, workspaces, emoji picker, screenshot, launcher and scratchpad](docs/demo.gif)
+
+*Tall, Mirror and three-column layouts with 1 px gaps, resizing, full
+screen, a window floated and resized with the mouse, workspaces, the emoji
+picker, a region screenshot, the launcher and a scratchpad, with the
+[waymobar](https://github.com/prietus/waymobar) bar. Full quality:
+[docs/demo.mp4](docs/demo.mp4) (56 s). The setup is in
+[examples/dotfiles](examples/dotfiles/README.md).*
+
 rivermonad is **not** a compositor. It runs as the window manager process of
 [river](https://codeberg.org/river/river) ≥ 0.4, which splits the compositor
 (rendering, input, protocols, Xwayland) from the window manager, connected by
