@@ -52,7 +52,7 @@ the `XMonad.` prefix replaced by `Rivermonad.`:
 | `Rivermonad.Hooks.StatusBar` | status line for waybar (see below) |
 | `Rivermonad.Layout.LayoutModifier` | write your own layout modifiers |
 | `Rivermonad.Layout.NoBorders` | `noBorders`, `smartBorders` |
-| `Rivermonad.Layout.Spacing` | `spacing`, `spacingWithEdge`, `smartSpacing`, `incSpacing` |
+| `Rivermonad.Layout.Spacing` | `spacing`, `spacingWithEdge`, `smartSpacing` (xmonad style) and `gaps`, `gapsWithEdge`, `smartGaps` (exact gap, e.g. 1 px), `incSpacing` |
 | `Rivermonad.Layout.ToggleLayouts` | `toggleLayouts (noBorders Full) myLayouts` |
 | `Rivermonad.Layout.PerWorkspace` | `onWorkspace "web" Full myLayouts` |
 | `Rivermonad.Layout.ThreeColumns` | `ThreeCol`, `ThreeColMid` |

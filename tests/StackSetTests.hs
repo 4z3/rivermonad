@@ -10,6 +10,8 @@ import Rivermonad.Config (defaultConfig)
 import Rivermonad.Keysym
 import Rivermonad.Layout
 import Rivermonad.Layout.Grid (arrange)
+import Rivermonad.Layout.LayoutModifier (LayoutModifier (..))
+import Rivermonad.Layout.Spacing (Spacing (..))
 import Rivermonad.Layout.ResizableTile (ResizableTall (..))
 import Rivermonad.Layout.ThreeColumns (ThreeCol (..))
 import Rivermonad.Util.EZConfig (readKey)
@@ -65,11 +67,25 @@ main = do
     , check "Grid covers the screen without overlap" (gridOk 5 && gridOk 7 && gridOk 1)
     , check "ThreeColMid puts the master in the middle" (threeMid == [250, 750, 750, 0])
     , check "ResizableTall honours relative heights" (map (rect_height . snd) resizable == [800, 200, 600])
+    , check "gapsWithEdge 1: one pixel between windows and to every edge" gapsOk
     , check "mirrorRect is an involution" (mirrorRect (mirrorRect (Rectangle 1 2 3 4)) == Rectangle 1 2 3 4)
     ]
   unless (and rs) exitFailure
   where
     area = Rectangle 0 0 1000 800
+    -- gapsWithEdge 1 on two Tall windows: the screen is inset (1,1,0,0),
+    -- every window (0,0,1,1).
+    gapsOk =
+      let sp = Spacing 1 True False True True :: Spacing Int
+          screen' = Rectangle 1 1 999 799
+          tiled = maybe [] (pureLayout (Tall 1 (3 / 100) (1 / 2) :: Tall Int) screen') (W.differentiate [1, 2 :: Int])
+          rs = map snd (fst (pureModifier sp area (W.differentiate [1, 2]) tiled))
+      in case rs of
+           [a, b] -> rect_x a == 1 && rect_y a == 1                                -- left/top edge: 1 px
+                     && rect_x b - (rect_x a + rect_width a) == 1                  -- between: 1 px
+                     && 1000 - (rect_x b + rect_width b) == 1                      -- right edge: 1 px
+                     && 800 - (rect_y a + rect_height a) == 1                      -- bottom edge: 1 px
+           _ -> False
     gridOk n = let rs' = map snd (arrange 1 area [1 .. n :: Int])
                in length rs' == n && sum [ rect_width r * rect_height r | r <- rs' ] == 1000 * 800
     threeMid = map (rect_x . snd) (maybe [] (pureLayout (ThreeColMid 1 (3 / 100) (1 / 2) :: ThreeCol Int) area)
