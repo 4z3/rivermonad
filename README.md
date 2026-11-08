@@ -62,7 +62,13 @@ the `XMonad.` prefix replaced by `Rivermonad.`:
 Not ported: modules that draw their own UI in X11 (`Prompt`, `GridSelect`,
 `Tabbed`, decorations); use fuzzel & co. instead of prompts.
 
-### Status bar (waybar)
+### Status bar
+
+**waymobar** (`waymobar/`) is a native bar written and configured in
+Haskell, with rivermonad widgets built in. See
+[waymobar/README.md](waymobar/README.md).
+
+With waybar instead:
 
 **Native modules:** `contrib/waybar/` has a patch for waybar 0.15.0 adding
 `rivermonad/workspaces` (clickable), `rivermonad/window` and
