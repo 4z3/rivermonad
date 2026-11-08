@@ -116,15 +116,21 @@ over from xmonad mostly means:
 | `dmenu_run`                     | `fuzzel`, `bemenu-run`, `wmenu-run` |
 
 If you'd rather not install the library globally, put an executable
-`~/.config/rivermonad/build` script next to the config; it receives the output
-path as `$1`. For example, to build against a rivermonad checkout:
+`~/.config/rivermonad/build` script next to the config; rivermonad runs it
+with the output binary as `$1`. For example, to build against a rivermonad
+checkout in `~/src/rivermonad` (it also works when run by hand):
 
 ```sh
 #!/bin/sh
-CFG="$PWD"
-cd ~/src/rivermonad && exec env -u XDG_CACHE_HOME cabal -v0 exec -- \
+set -e
+CFG="$(cd "$(dirname "$0")" && pwd)"
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/rivermonad"
+OUT="${1:-$CACHE/rivermonad-$(uname -m)-linux}"
+mkdir -p "$(dirname "$OUT")"
+cd ~/src/rivermonad
+exec env -u XDG_CACHE_HOME -u XDG_CONFIG_HOME cabal -v0 exec -- \
   ghc --make -package rivermonad "$CFG/rivermonad.hs" -i"$CFG/lib" -threaded -v0 \
-  -outputdir "$(dirname "$1")/build" -o "$1"
+  -outputdir "$(dirname "$OUT")/build" -o "$OUT"
 ```
 
 Key bindings take xkbcommon keysyms (`xK_*`, the same values as in X11), using
