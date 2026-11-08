@@ -161,7 +161,7 @@ onManager e = case e of
     lso <- case ls of
       Just l -> Just <$> withConn (\c -> riverLayerShellV1GetOutput c l o)
       Nothing -> pure Nothing
-    modify $ \s -> s { outputs = M.insert o (OutputInfo Nothing Nothing Nothing lso Nothing Nothing) (outputs s)
+    modify $ \s -> s { outputs = M.insert o (OutputInfo Nothing Nothing Nothing lso Nothing Nothing False) (outputs s)
                      , outputsDirty = True }
   RiverWindowManagerV1Seat s -> setupSeat s
 
@@ -181,6 +181,8 @@ onWindow w e = case e of
   RiverWindowV1Parent p ->
     modifyInfo w (\i -> i { wiParent = if p == nullObject then Nothing else Just p })
   RiverWindowV1DecorationHint h -> modifyInfo w (\i -> i { wiDecoration = fi h })
+  RiverWindowV1PresentationHint h ->
+    modifyInfo w (\i -> i { wiAsync = h == riverOutputV1PresentationModeAsync })
   RiverWindowV1FullscreenRequested _ ->
     modify $ \s -> s { fullscreen = S.insert w (fullscreen s) }
   RiverWindowV1ExitFullscreenRequested ->
@@ -562,6 +564,30 @@ applyManage = do
 
   -- Remember where the pointer was when this layout was applied.
   modifySeats (\si -> si { siPosAtLayout = siPointerPos si })
+  updatePresentation
+
+-- | Tearing: an output presents asynchronously (no vsync) only while a
+-- window that asked for it is fullscreen on it and shown; everything else
+-- is vsync. Rendering state, so valid in manage and render sequences.
+updatePresentation :: X ()
+updatePresentation = do
+  allowed <- asks (allowTearing . config)
+  v <- asks (gWmVersion . globals)
+  when (v >= 4) $ do
+    c <- asks conn
+    ws <- gets windowset
+    infos <- gets windowInfo
+    have <- gets haveScreens
+    let shown = S.fromList [ w | have, scr <- W.screens ws, w <- W.integrate' (W.stack (W.workspace scr)) ]
+        wantsAsync o = allowed && or
+          [ True | (w, i) <- M.toList infos, S.member w shown, wiAsync i, wiFullscreen i == Just o ]
+    outs <- gets outputs
+    forM_ (M.toList outs) $ \(o, oi) -> do
+      let want = wantsAsync o
+      when (want /= oiAsync oi) $ do
+        io $ riverOutputV1SetPresentationMode c o
+          (if want then riverOutputV1PresentationModeAsync else riverOutputV1PresentationModeVsync)
+        modify $ \st -> st { outputs = M.adjust (\x -> x { oiAsync = want }) o (outputs st) }
 
 ------------------------------------------------------------------------------
 -- Render sequence
@@ -574,6 +600,8 @@ onRenderStart = do
 
 renderBody :: X ()
 renderBody = do
+  -- A presentation hint arrives right before a render sequence.
+  updatePresentation
   c <- asks conn
   bw <- asks (borderWidth . config)
   centre <- gets needsCenter

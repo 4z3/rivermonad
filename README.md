@@ -25,6 +25,10 @@ the stable `river-window-management-v1` protocol. Because of this split:
 * xmonad's default key bindings (with Super as the modifier), mouse move and
   resize of floating windows, focus follows mouse
 * compositor-drawn borders, client fullscreen requests and `mod-f`
+* tearing for games: a fullscreen window that asks for it
+  (`wp_tearing_control`) makes its output present without vsync, back to
+  vsync when it leaves; `allowTearing = False` turns it off. Pair it with
+  variable refresh rate (`adaptive_sync on` in kanshi) on real hardware
 * layer-shell (waybar, fuzzel, …), with the space taken by bars excluded
 * `~/.config/rivermonad/rivermonad.hs` recompiled with ghc; `mod-q`
   recompiles and restarts while keeping each window's workspace, stack

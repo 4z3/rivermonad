@@ -36,6 +36,7 @@ defaultConfig = XConfig
   , logHook = pure ()
   , focusFollowsMouse = True
   , xcursorTheme = Nothing
+  , allowTearing = True
   }
 
 defaultLayout :: Layout Window

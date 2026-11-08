@@ -157,6 +157,7 @@ data WindowInfo = WindowInfo
   , wiFullscreen :: !(Maybe ObjectId)   -- ^ output it is currently fullscreen on
   , wiDecoSent   :: !(Maybe Bool)       -- ^ last use_ssd (True) / use_csd (False) sent
   , wiGeom       :: !(Maybe Rectangle)  -- ^ last placement, borders included
+  , wiAsync      :: !Bool               -- ^ the window prefers tearing (async presentation)
   } deriving (Show)
 
 emptyWindowInfo :: ObjectId -> WindowInfo
@@ -164,7 +165,7 @@ emptyWindowInfo node = WindowInfo
   { wiNode = node, wiAppId = "", wiTitle = "", wiIdentifier = "", wiParent = Nothing
   , wiMinSize = (0, 0), wiMaxSize = (0, 0), wiDims = Nothing, wiDecoration = 3
   , wiManaged = False, wiProposed = Nothing, wiTiled = Nothing, wiFullscreen = Nothing
-  , wiDecoSent = Nothing, wiGeom = Nothing }
+  , wiDecoSent = Nothing, wiGeom = Nothing, wiAsync = False }
 
 data OutputInfo = OutputInfo
   { oiPos        :: !(Maybe (Int, Int))
@@ -173,6 +174,7 @@ data OutputInfo = OutputInfo
   , oiLayerShell :: !(Maybe ObjectId)
   , oiWlOutput   :: !(Maybe (ObjectId, Word32)) -- ^ bound wl_output and its version
   , oiName       :: !(Maybe String)             -- ^ connector name, e.g. "DP-1"
+  , oiAsync      :: !Bool                       -- ^ async (tearing) presentation requested from river
   } deriving (Show)
 
 data DragKind = DragMove | DragResize deriving (Show, Eq)
@@ -251,6 +253,7 @@ data XConfig = XConfig
   , logHook            :: !(X ())
   , focusFollowsMouse  :: !Bool
   , xcursorTheme       :: !(Maybe (String, Int))
+  , allowTearing       :: !Bool  -- ^ let fullscreen windows that ask for it (games) tear for lower latency
   }
 
 ------------------------------------------------------------------------------
