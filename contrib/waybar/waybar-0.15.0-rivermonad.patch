@@ -1,0 +1,808 @@
+diff --git a/include/modules/rivermonad/backend.hpp b/include/modules/rivermonad/backend.hpp
+new file mode 100644
+index 0000000..6dcb6f4
+--- /dev/null
++++ b/include/modules/rivermonad/backend.hpp
+@@ -0,0 +1,55 @@
++#pragma once
++
++#include <json/value.h>
++
++#include <list>
++#include <memory>
++#include <mutex>
++#include <string>
++
++#include "util/json.hpp"
++
++namespace waybar::modules::rivermonad {
++
++class EventHandler {
++ public:
++  virtual void onEvent() = 0;
++  virtual ~EventHandler() = default;
++};
++
++// Connection to rivermonad's IPC socket. It subscribes to the event stream
++// and keeps the latest state; it reconnects when rivermonad restarts.
++class IPC {
++ public:
++  IPC() { startIPC(); }
++
++  void registerForIPC(EventHandler* handler);
++  void unregisterForIPC(EventHandler* handler);
++
++  // Send one request on a new connection and return the reply.
++  static Json::Value send(const Json::Value& request);
++
++  // The data members are only safe to access while dataMutex_ is locked.
++  std::lock_guard<std::mutex> lockData() { return std::lock_guard(dataMutex_); }
++  const Json::Value& state() const { return state_; }
++  bool connected() const { return connected_; }
++
++ private:
++  void startIPC();
++  static std::string socketPath();
++  static int connectToSocket();
++  void setState(const Json::Value& state, bool connected);
++  void notify();
++
++  std::mutex dataMutex_;
++  Json::Value state_;
++  bool connected_ = false;
++
++  util::JsonParser parser_;
++  std::mutex callbackMutex_;
++  std::list<EventHandler*> callbacks_;
++};
++
++inline std::unique_ptr<IPC> gIPC;
++
++}  // namespace waybar::modules::rivermonad
+diff --git a/include/modules/rivermonad/layout.hpp b/include/modules/rivermonad/layout.hpp
+new file mode 100644
+index 0000000..73816ff
+--- /dev/null
++++ b/include/modules/rivermonad/layout.hpp
+@@ -0,0 +1,27 @@
++#pragma once
++
++#include <json/value.h>
++
++#include "ALabel.hpp"
++#include "bar.hpp"
++#include "modules/rivermonad/backend.hpp"
++
++namespace waybar::modules::rivermonad {
++
++// Layout of the workspace shown on this bar's output. A left click sends
++// NextLayout unless "on-click" is configured.
++class Layout : public ALabel, public EventHandler {
++ public:
++  Layout(const std::string&, const Bar&, const Json::Value&);
++  ~Layout() override;
++  void update() override;
++  bool handleToggle(GdkEventButton* const& e) override;
++
++ private:
++  void onEvent() override;
++  void doUpdate();
++
++  const Bar& bar_;
++};
++
++}  // namespace waybar::modules::rivermonad
+diff --git a/include/modules/rivermonad/window.hpp b/include/modules/rivermonad/window.hpp
+new file mode 100644
+index 0000000..d8a5e52
+--- /dev/null
++++ b/include/modules/rivermonad/window.hpp
+@@ -0,0 +1,27 @@
++#pragma once
++
++#include <json/value.h>
++
++#include "AAppIconLabel.hpp"
++#include "bar.hpp"
++#include "modules/rivermonad/backend.hpp"
++
++namespace waybar::modules::rivermonad {
++
++// Title of the focused window.
++class Window : public AAppIconLabel, public EventHandler {
++ public:
++  Window(const std::string&, const Bar&, const Json::Value&);
++  ~Window() override;
++  void update() override;
++
++ private:
++  void onEvent() override;
++  void doUpdate();
++  void setClass(const std::string& className, bool enable);
++
++  const Bar& bar_;
++  std::string oldAppId_;
++};
++
++}  // namespace waybar::modules::rivermonad
+diff --git a/include/modules/rivermonad/workspaces.hpp b/include/modules/rivermonad/workspaces.hpp
+new file mode 100644
+index 0000000..671c1ae
+--- /dev/null
++++ b/include/modules/rivermonad/workspaces.hpp
+@@ -0,0 +1,34 @@
++#pragma once
++
++#include <gtkmm/box.h>
++#include <gtkmm/button.h>
++#include <json/value.h>
++
++#include <map>
++#include <string>
++
++#include "AModule.hpp"
++#include "bar.hpp"
++#include "modules/rivermonad/backend.hpp"
++
++namespace waybar::modules::rivermonad {
++
++class Workspaces : public AModule, public EventHandler {
++ public:
++  Workspaces(const std::string&, const Bar&, const Json::Value&);
++  ~Workspaces() override;
++  void update() override;
++
++ private:
++  void onEvent() override;
++  void doUpdate();
++  Gtk::Button& addButton(const std::string& name);
++  std::string getIcon(const std::string& name, const Json::Value& ws);
++
++  const Bar& bar_;
++  Gtk::Box box_;
++  // Workspace name -> button.
++  std::map<std::string, Gtk::Button> buttons_;
++};
++
++}  // namespace waybar::modules::rivermonad
+diff --git a/man/waybar-rivermonad-workspaces.5.scd b/man/waybar-rivermonad-workspaces.5.scd
+new file mode 100644
+index 0000000..4a0c681
+--- /dev/null
++++ b/man/waybar-rivermonad-workspaces.5.scd
+@@ -0,0 +1,98 @@
++waybar-rivermonad-workspaces(5)
++
++# NAME
++
++waybar - rivermonad workspaces, window and layout modules
++
++# DESCRIPTION
++
++Modules for the rivermonad window manager (an xmonad-style window manager for
++river). They read rivermonad's IPC socket ($RIVERMONAD_SOCKET, or
++$XDG_RUNTIME_DIR/rivermonad-$WAYLAND_DISPLAY.sock) and reconnect when
++rivermonad restarts.
++
++Like in xmonad, workspaces are not tied to outputs: every bar shows all of
++them, and the one shown on the bar's output gets the *active* class.
++
++# rivermonad/workspaces
++
++*format*: ++
++	typeof: string ++
++	default: {name} ++
++	Replacements: {name}, {icon}, {index}, {windows}, {layout}, {output}.
++
++*format-icons*: ++
++	typeof: object ++
++	Icons by state (*empty*, *focused*, *visible*), then by workspace name, then *default*.
++
++*hide-empty*: ++
++	typeof: bool ++
++	default: false ++
++	Hide workspaces without windows unless they are shown on some output.
++
++*show-extra*: ++
++	typeof: bool ++
++	default: false ++
++	Also show workspaces created at runtime (e.g. the scratchpad one).
++
++*current-only*: ++
++	typeof: bool ++
++	default: false ++
++	Only show the workspace on this bar's output.
++
++*click-action*: ++
++	typeof: string ++
++	default: focus ++
++	*focus* behaves like xmonad's view (a workspace shown on another output gets the focus there); *view* behaves like greedyView (bring it to the focused output).
++
++*disable-click*: ++
++	typeof: bool ++
++	default: false
++
++*disable-markup*: ++
++	typeof: bool ++
++	default: false
++
++# rivermonad/window
++
++*format*: ++
++	typeof: string ++
++	default: {title} ++
++	Replacements: {title}, {app_id}.
++
++*separate-outputs*: ++
++	typeof: bool ++
++	default: false ++
++	Only show the title on the bar of the focused output.
++
++*rewrite*: ++
++	typeof: object ++
++	Rules to rewrite the title, as in other window modules.
++
++# rivermonad/layout
++
++*format*: ++
++	typeof: string ++
++	default: {} ++
++	Replacements: {} or {layout}, {workspace}. A left click switches to the next layout unless *on-click* is set.
++
++# EXAMPLES
++
++```
++"rivermonad/workspaces": {
++	"format": "{name}",
++	"hide-empty": true
++},
++"rivermonad/window": { "max-length": 60 }
++```
++
++# STYLE
++
++- *#workspaces button*
++- *#workspaces button.focused*
++- *#workspaces button.active*
++- *#workspaces button.visible*
++- *#workspaces button.empty*
++- *#workspaces button#rivermonad-workspace-<name>*
++- *#window.empty*
++- *#layout*
+diff --git a/meson.build b/meson.build
+index db9407e..dda1d8c 100644
+--- a/meson.build
++++ b/meson.build
+@@ -332,6 +332,19 @@ if true
+     )
+ endif
+ 
++if get_option('rivermonad')
++    add_project_arguments('-DHAVE_RIVERMONAD', language: 'cpp')
++    src_files += files(
++        'src/modules/rivermonad/backend.cpp',
++        'src/modules/rivermonad/layout.cpp',
++        'src/modules/rivermonad/window.cpp',
++        'src/modules/rivermonad/workspaces.cpp',
++    )
++    man_files += files(
++        'man/waybar-rivermonad-workspaces.5.scd',
++    )
++endif
++
+ if get_option('niri')
+     add_project_arguments('-DHAVE_NIRI', language: 'cpp')
+     src_files += files(
+diff --git a/meson_options.txt b/meson_options.txt
+index c0f63f2..0987199 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -20,5 +20,6 @@ option('jack', type: 'feature', value: 'auto', description: 'Enable support for
+ option('wireplumber', type: 'feature', value: 'auto', description: 'Enable support for WirePlumber')
+ option('cava', type: 'feature', value: 'auto', description: 'Enable support for Cava')
+ option('niri', type: 'boolean', description: 'Enable support for niri')
++option('rivermonad', type: 'boolean', value: true, description: 'Enable support for the rivermonad window manager')
+ option('login-proxy', type: 'boolean', description: 'Enable interfacing with dbus login interface')
+ option('gps', type: 'feature', value: 'auto', description: 'Enable support for gps')
+diff --git a/src/factory.cpp b/src/factory.cpp
+index 2fd3e3b..35bfa3d 100644
+--- a/src/factory.cpp
++++ b/src/factory.cpp
+@@ -37,6 +37,11 @@
+ #include "modules/hyprland/windowcount.hpp"
+ #include "modules/hyprland/workspaces.hpp"
+ #endif
++#ifdef HAVE_RIVERMONAD
++#include "modules/rivermonad/layout.hpp"
++#include "modules/rivermonad/window.hpp"
++#include "modules/rivermonad/workspaces.hpp"
++#endif
+ #ifdef HAVE_NIRI
+ #include "modules/niri/language.hpp"
+ #include "modules/niri/window.hpp"
+@@ -220,6 +225,17 @@ waybar::AModule* waybar::Factory::makeModule(const std::string& name,
+       return new waybar::modules::hyprland::Workspaces(id, bar_, config_[name]);
+     }
+ #endif
++#ifdef HAVE_RIVERMONAD
++    if (ref == "rivermonad/workspaces") {
++      return new waybar::modules::rivermonad::Workspaces(id, bar_, config_[name]);
++    }
++    if (ref == "rivermonad/window") {
++      return new waybar::modules::rivermonad::Window(id, bar_, config_[name]);
++    }
++    if (ref == "rivermonad/layout") {
++      return new waybar::modules::rivermonad::Layout(id, bar_, config_[name]);
++    }
++#endif
+ #ifdef HAVE_NIRI
+     if (ref == "niri/language") {
+       return new waybar::modules::niri::Language(id, bar_, config_[name]);
+diff --git a/src/modules/rivermonad/backend.cpp b/src/modules/rivermonad/backend.cpp
+new file mode 100644
+index 0000000..b8f9000
+--- /dev/null
++++ b/src/modules/rivermonad/backend.cpp
+@@ -0,0 +1,159 @@
++#include "modules/rivermonad/backend.hpp"
++
++#include <spdlog/spdlog.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++
++#include <algorithm>
++#include <chrono>
++#include <cstring>
++#include <sstream>
++#include <thread>
++
++namespace waybar::modules::rivermonad {
++
++std::string IPC::socketPath() {
++  if (const char* env = getenv("RIVERMONAD_SOCKET"); env != nullptr && *env != '\0') return env;
++  const char* runtime = getenv("XDG_RUNTIME_DIR");
++  const char* display = getenv("WAYLAND_DISPLAY");
++  std::string disp = display != nullptr ? display : "wayland-0";
++  std::replace(disp.begin(), disp.end(), '/', '_');
++  return std::string(runtime != nullptr ? runtime : "/tmp") + "/rivermonad-" + disp + ".sock";
++}
++
++int IPC::connectToSocket() {
++  const auto path = socketPath();
++  int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
++  if (fd == -1) return -1;
++
++  struct sockaddr_un addr {};
++  addr.sun_family = AF_UNIX;
++  strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
++  if (connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) == -1) {
++    close(fd);
++    return -1;
++  }
++  return fd;
++}
++
++static bool writeAll(int fd, const std::string& data) {
++  size_t off = 0;
++  while (off < data.size()) {
++    ssize_t n = write(fd, data.data() + off, data.size() - off);
++    if (n <= 0) return false;
++    off += static_cast<size_t>(n);
++  }
++  return true;
++}
++
++// Reads newline-terminated lines from a socket.
++class LineReader {
++ public:
++  explicit LineReader(int fd) : fd_(fd) {}
++  bool next(std::string& line) {
++    for (;;) {
++      if (auto pos = buf_.find('\n'); pos != std::string::npos) {
++        line = buf_.substr(0, pos);
++        buf_.erase(0, pos + 1);
++        return true;
++      }
++      char chunk[4096];
++      ssize_t n = read(fd_, chunk, sizeof(chunk));
++      if (n <= 0) return false;
++      buf_.append(chunk, static_cast<size_t>(n));
++    }
++  }
++
++ private:
++  int fd_;
++  std::string buf_;
++};
++
++void IPC::startIPC() {
++  std::thread([this]() {
++    bool warned = false;
++    for (;;) {
++      int fd = connectToSocket();
++      if (fd == -1) {
++        if (!warned) {
++          spdlog::warn("rivermonad IPC: cannot connect to {}, retrying", socketPath());
++          warned = true;
++        }
++        std::this_thread::sleep_for(std::chrono::seconds(1));
++        continue;
++      }
++      warned = false;
++      spdlog::info("rivermonad IPC: connected");
++
++      LineReader reader(fd);
++      std::string line;
++      if (writeAll(fd, "\"EventStream\"\n") && reader.next(line) && line == R"({"Ok":"Handled"})") {
++        while (reader.next(line)) {
++          spdlog::debug("rivermonad IPC: received {}", line);
++          try {
++            const auto ev = parser_.parse(line);
++            if (ev.isMember("State")) setState(ev["State"], true);
++          } catch (const std::exception& e) {
++            spdlog::warn("rivermonad IPC: bad message {}: {}", line, e.what());
++          }
++        }
++      } else {
++        spdlog::error("rivermonad IPC: failed to start the event stream");
++      }
++      close(fd);
++
++      // rivermonad went away (restart or exit): show nothing until it is back.
++      setState(Json::Value(), false);
++      std::this_thread::sleep_for(std::chrono::milliseconds(300));
++    }
++  }).detach();
++}
++
++void IPC::setState(const Json::Value& state, bool connected) {
++  {
++    auto lock = lockData();
++    state_ = state;
++    connected_ = connected;
++  }
++  notify();
++}
++
++void IPC::notify() {
++  std::lock_guard lock(callbackMutex_);
++  for (auto* handler : callbacks_) handler->onEvent();
++}
++
++void IPC::registerForIPC(EventHandler* handler) {
++  if (handler == nullptr) return;
++  std::lock_guard lock(callbackMutex_);
++  callbacks_.push_back(handler);
++}
++
++void IPC::unregisterForIPC(EventHandler* handler) {
++  if (handler == nullptr) return;
++  std::lock_guard lock(callbackMutex_);
++  callbacks_.remove(handler);
++}
++
++Json::Value IPC::send(const Json::Value& request) {
++  int fd = connectToSocket();
++  if (fd == -1) throw std::runtime_error("rivermonad is not running");
++
++  Json::StreamWriterBuilder builder;
++  builder["indentation"] = "";
++  std::string payload = Json::writeString(builder, request) + "\n";
++
++  std::string line;
++  LineReader reader(fd);
++  bool ok = writeAll(fd, payload) && reader.next(line);
++  close(fd);
++  if (!ok) throw std::runtime_error("error talking to rivermonad");
++
++  Json::Value response;
++  std::istringstream iss(line);
++  iss >> response;
++  return response;
++}
++
++}  // namespace waybar::modules::rivermonad
+diff --git a/src/modules/rivermonad/layout.cpp b/src/modules/rivermonad/layout.cpp
+new file mode 100644
+index 0000000..07f443b
+--- /dev/null
++++ b/src/modules/rivermonad/layout.cpp
+@@ -0,0 +1,67 @@
++#include "modules/rivermonad/layout.hpp"
++
++#include <spdlog/spdlog.h>
++
++#include "util/sanitize_str.hpp"
++
++namespace waybar::modules::rivermonad {
++
++Layout::Layout(const std::string& id, const Bar& bar, const Json::Value& config)
++    : ALabel(config, "layout", id, "{}", 0, false, /*enable_click=*/true), bar_(bar) {
++  label_.hide();
++  if (!gIPC) gIPC = std::make_unique<IPC>();
++  gIPC->registerForIPC(this);
++  dp.emit();
++}
++
++Layout::~Layout() { gIPC->unregisterForIPC(this); }
++
++void Layout::onEvent() { dp.emit(); }
++
++void Layout::doUpdate() {
++  auto ipcLock = gIPC->lockData();
++  const auto& state = gIPC->state();
++
++  // Prefer the workspace on this output, fall back to the focused one.
++  Json::Value chosen;
++  for (const auto& ws : state["workspaces"]) {
++    if (!ws["output"].isNull() && ws["output"].asString() == bar_.output->name) chosen = ws;
++  }
++  if (chosen.isNull()) {
++    for (const auto& ws : state["workspaces"]) {
++      if (ws["focused"].asBool()) chosen = ws;
++    }
++  }
++
++  if (!gIPC->connected() || chosen.isNull()) {
++    label_.hide();
++    return;
++  }
++  const auto layout = chosen["layout"].asString();
++  label_.set_markup(fmt::format(fmt::runtime(format_), waybar::util::sanitize_string(layout),
++                                fmt::arg("layout", waybar::util::sanitize_string(layout)),
++                                fmt::arg("workspace", chosen["name"].asString())));
++  if (tooltipEnabled()) label_.set_tooltip_text(layout);
++  label_.show();
++}
++
++void Layout::update() {
++  doUpdate();
++  ALabel::update();
++}
++
++bool Layout::handleToggle(GdkEventButton* const& e) {
++  if (e->button == 1 && !config_["on-click"].isString()) {
++    try {
++      Json::Value request(Json::objectValue);
++      request["Action"] = "NextLayout";
++      IPC::send(request);
++    } catch (const std::exception& ex) {
++      spdlog::error("rivermonad: error changing layout: {}", ex.what());
++    }
++    return true;
++  }
++  return ALabel::handleToggle(e);
++}
++
++}  // namespace waybar::modules::rivermonad
+diff --git a/src/modules/rivermonad/window.cpp b/src/modules/rivermonad/window.cpp
+new file mode 100644
+index 0000000..dcf3711
+--- /dev/null
++++ b/src/modules/rivermonad/window.cpp
+@@ -0,0 +1,70 @@
++#include "modules/rivermonad/window.hpp"
++
++#include <spdlog/spdlog.h>
++
++#include "util/rewrite_string.hpp"
++#include "util/sanitize_str.hpp"
++
++namespace waybar::modules::rivermonad {
++
++Window::Window(const std::string& id, const Bar& bar, const Json::Value& config)
++    : AAppIconLabel(config, "window", id, "{title}", 0, true), bar_(bar) {
++  if (!gIPC) gIPC = std::make_unique<IPC>();
++  gIPC->registerForIPC(this);
++  dp.emit();
++}
++
++Window::~Window() { gIPC->unregisterForIPC(this); }
++
++void Window::onEvent() { dp.emit(); }
++
++void Window::doUpdate() {
++  auto ipcLock = gIPC->lockData();
++  const auto& state = gIPC->state();
++
++  // With "separate-outputs", only the bar on the focused output shows it.
++  const bool otherOutput = config_["separate-outputs"].asBool() &&
++                           state["focused_output"].isString() &&
++                           state["focused_output"].asString() != bar_.output->name;
++
++  if (!gIPC->connected() || state["title"].isNull() || otherOutput) {
++    label_.hide();
++    updateAppIconName("", "");
++    setClass("empty", true);
++    if (!oldAppId_.empty()) setClass(oldAppId_, false);
++    oldAppId_.clear();
++    return;
++  }
++
++  const auto title = state["title"].asString();
++  const auto appId = state["app_id"].asString();
++  setClass("empty", false);
++  label_.show();
++  label_.set_markup(waybar::util::rewriteString(
++      fmt::format(fmt::runtime(format_), fmt::arg("title", waybar::util::sanitize_string(title)),
++                  fmt::arg("app_id", waybar::util::sanitize_string(appId))),
++      config_["rewrite"]));
++  updateAppIconName(appId, "");
++  if (tooltipEnabled()) label_.set_tooltip_text(title);
++
++  if (oldAppId_ != appId) {
++    if (!oldAppId_.empty()) setClass(oldAppId_, false);
++    if (!appId.empty()) setClass(appId, true);
++    oldAppId_ = appId;
++  }
++}
++
++void Window::update() {
++  doUpdate();
++  AAppIconLabel::update();
++}
++
++void Window::setClass(const std::string& className, bool enable) {
++  auto ctx = label_.get_style_context();
++  if (enable)
++    ctx->add_class(className);
++  else
++    ctx->remove_class(className);
++}
++
++}  // namespace waybar::modules::rivermonad
+diff --git a/src/modules/rivermonad/workspaces.cpp b/src/modules/rivermonad/workspaces.cpp
+new file mode 100644
+index 0000000..4a246aa
+--- /dev/null
++++ b/src/modules/rivermonad/workspaces.cpp
+@@ -0,0 +1,148 @@
++#include "modules/rivermonad/workspaces.hpp"
++
++#include <gtkmm/label.h>
++#include <spdlog/spdlog.h>
++
++#include <vector>
++
++namespace waybar::modules::rivermonad {
++
++Workspaces::Workspaces(const std::string& id, const Bar& bar, const Json::Value& config)
++    : AModule(config, "workspaces", id, false, false), bar_(bar), box_(bar.orientation, 0) {
++  box_.set_name("workspaces");
++  if (!id.empty()) box_.get_style_context()->add_class(id);
++  box_.get_style_context()->add_class(MODULE_CLASS);
++  event_box_.add(box_);
++
++  if (!gIPC) gIPC = std::make_unique<IPC>();
++  gIPC->registerForIPC(this);
++
++  dp.emit();
++}
++
++Workspaces::~Workspaces() { gIPC->unregisterForIPC(this); }
++
++void Workspaces::onEvent() { dp.emit(); }
++
++static void setClass(const Glib::RefPtr<Gtk::StyleContext>& ctx, const char* cls, bool on) {
++  if (on)
++    ctx->add_class(cls);
++  else
++    ctx->remove_class(cls);
++}
++
++void Workspaces::doUpdate() {
++  auto ipcLock = gIPC->lockData();
++  const auto& state = gIPC->state();
++
++  const auto showExtra = config_["show-extra"].asBool();
++  const auto hideEmpty = config_["hide-empty"].asBool();
++  const auto& myOutput = bar_.output->name;
++
++  // Workspaces to show, in rivermonad's order (configuration order).
++  std::vector<Json::Value> shown;
++  if (gIPC->connected()) {
++    for (const auto& ws : state["workspaces"]) {
++      if (ws["extra"].asBool() && !showExtra) continue;
++      const bool empty = ws["windows"].asUInt() == 0;
++      if (hideEmpty && empty && !ws["focused"].asBool() && !ws["visible"].asBool()) continue;
++      shown.push_back(ws);
++    }
++  }
++
++  // Remove buttons for workspaces that are no longer shown.
++  for (auto it = buttons_.begin(); it != buttons_.end();) {
++    const auto& name = it->first;
++    const bool keep = std::any_of(shown.begin(), shown.end(),
++                                  [&](const auto& ws) { return ws["name"].asString() == name; });
++    if (keep) {
++      ++it;
++    } else {
++      box_.remove(it->second);
++      it = buttons_.erase(it);
++    }
++  }
++
++  int pos = 0;
++  for (const auto& ws : shown) {
++    const auto name = ws["name"].asString();
++    auto bit = buttons_.find(name);
++    auto& button = bit == buttons_.end() ? addButton(name) : bit->second;
++    auto ctx = button.get_style_context();
++
++    const bool onThisOutput = !ws["output"].isNull() && ws["output"].asString() == myOutput;
++    // "focused": the workspace with keyboard focus (xmonad's current one).
++    setClass(ctx, "focused", ws["focused"].asBool());
++    // "active": the workspace shown on this bar's output.
++    setClass(ctx, "active", onThisOutput);
++    // "visible": shown on some output (xmonad's ppVisible).
++    setClass(ctx, "visible", ws["visible"].asBool());
++    setClass(ctx, "empty", ws["windows"].asUInt() == 0);
++
++    button.set_name("rivermonad-workspace-" + name);
++
++    std::string label = name;
++    if (config_["format"].isString()) {
++      label = fmt::format(fmt::runtime(config_["format"].asString()),
++                          fmt::arg("icon", getIcon(name, ws)), fmt::arg("value", name),
++                          fmt::arg("name", name), fmt::arg("index", ws["idx"].asUInt()),
++                          fmt::arg("windows", ws["windows"].asUInt()),
++                          fmt::arg("layout", ws["layout"].asString()),
++                          fmt::arg("output", ws["output"].isNull() ? "" : ws["output"].asString()));
++    }
++    if (!config_["disable-markup"].asBool()) {
++      static_cast<Gtk::Label*>(button.get_children()[0])->set_markup(label);
++    } else {
++      button.set_label(label);
++    }
++
++    if (config_["current-only"].asBool() && !onThisOutput)
++      button.hide();
++    else
++      button.show();
++
++    box_.reorder_child(button, pos++);
++  }
++}
++
++void Workspaces::update() {
++  doUpdate();
++  AModule::update();
++}
++
++Gtk::Button& Workspaces::addButton(const std::string& name) {
++  auto pair = buttons_.emplace(name, name);
++  auto& button = pair.first->second;
++  box_.pack_start(button, false, false, 0);
++  button.set_relief(Gtk::RELIEF_NONE);
++  if (!config_["disable-click"].asBool()) {
++    // "focus" (default) is xmonad's view: a workspace visible on another
++    // monitor gets the focus there. "view" is greedyView: bring it here.
++    const auto action =
++        config_["click-action"].asString() == "view" ? "ViewWorkspace" : "FocusWorkspace";
++    button.signal_pressed().connect([name, action] {
++      try {
++        Json::Value request(Json::objectValue);
++        request["Action"][action] = name;
++        IPC::send(request);
++      } catch (const std::exception& e) {
++        spdlog::error("rivermonad: error switching workspace: {}", e.what());
++      }
++    });
++  }
++  return button;
++}
++
++std::string Workspaces::getIcon(const std::string& name, const Json::Value& ws) {
++  const auto& icons = config_["format-icons"];
++  if (!icons) return name;
++  // Same precedence as niri/workspaces: state first, then the name.
++  if (ws["windows"].asUInt() == 0 && icons["empty"]) return icons["empty"].asString();
++  if (ws["focused"].asBool() && icons["focused"]) return icons["focused"].asString();
++  if (ws["visible"].asBool() && icons["visible"]) return icons["visible"].asString();
++  if (icons[name]) return icons[name].asString();
++  if (icons["default"]) return icons["default"].asString();
++  return name;
++}
++
++}  // namespace waybar::modules::rivermonad

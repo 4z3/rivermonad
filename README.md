@@ -30,6 +30,8 @@ the stable `river-window-management-v1` protocol. Because of this split:
   recompiles and restarts while keeping each window's workspace, stack
   position and focus, every workspace's layout state and persistent
   extensible state
+* an IPC socket (newline-delimited JSON, like niri's): a state event stream
+  and actions, usable from scripts with `rivermonad --ipc`
 * xmonad's extension points: layouts in `X` (`doLayout`, `handleMessage`),
   `LayoutModifier`, `ExtensibleState`, `handleEventHook`
 
@@ -62,8 +64,14 @@ Not ported: modules that draw their own UI in X11 (`Prompt`, `GridSelect`,
 
 ### Status bar (waybar)
 
-`withStatusBar def myConfig` makes rivermonad publish its state; `rivermonad
---status` prints it as JSON lines, which a waybar `custom` module reads:
+**Native modules:** `contrib/waybar/` has a patch for waybar 0.15.0 adding
+`rivermonad/workspaces` (clickable), `rivermonad/window` and
+`rivermonad/layout`, which read rivermonad's IPC socket. See
+[contrib/waybar/README.md](contrib/waybar/README.md).
+
+**Unpatched waybar:** `withStatusBar def myConfig` makes rivermonad publish
+a status line; `rivermonad --status` prints it as JSON lines, which a waybar
+`custom` module reads:
 
 ```jsonc
 "modules-left": ["custom/rivermonad"],
