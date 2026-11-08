@@ -1,0 +1,240 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+-- | Core types: the 'X' monad, configuration and runtime state.
+module Rivermonad.Core
+  ( -- * Basic types
+    Window, WorkspaceId, ScreenId (..), ScreenDetail (..), WindowSet
+  , WindowInfo (..), OutputInfo (..), SeatInfo (..), Drag (..), DragKind (..)
+  , Globals (..), Input (..), RestartNow (..)
+    -- * Configuration
+  , XConfig (..), Default (..)
+    -- * The X monad
+  , X, XConf (..), XState (..), runX, io, catchX, userCode, userCodeDef
+  , withWindowSet, gets, modify, asks, ask, get, put
+    -- * Queries / ManageHook
+  , Query (..), ManageHook, runQuery, liftX
+    -- * Helpers
+  , screenRect, emptyWindowInfo
+  ) where
+
+import Control.Concurrent.Chan (Chan)
+import qualified Control.Exception as E
+import Control.Monad.Reader
+import Control.Monad.State.Strict
+import qualified Data.Map.Strict as M
+import Data.Monoid (Endo (..))
+import qualified Data.Set as S
+import System.Exit (ExitCode)
+import System.IO (hPutStrLn, stderr)
+
+import Rivermonad.Keysym
+import Rivermonad.Layout
+import Rivermonad.StackSet (StackSet)
+import Rivermonad.Wayland.Protocol (Event)
+import Rivermonad.Wayland.Wire (Conn, ObjectId)
+
+-- | A window is identified by its river_window_v1 object.
+type Window = ObjectId
+type WorkspaceId = String
+
+newtype ScreenId = S Int
+  deriving (Eq, Ord, Show, Read, Enum, Num, Integral, Real)
+
+data ScreenDetail = SD
+  { sdOutput :: !ObjectId   -- ^ the river_output_v1 behind this screen
+  , sdRect   :: !Rectangle  -- ^ area available to windows (bars excluded)
+  } deriving (Eq, Show)
+
+type WindowSet = StackSet WorkspaceId (Layout Window) Window ScreenId ScreenDetail
+
+screenRect :: ScreenDetail -> Rectangle
+screenRect = sdRect
+
+-- | Everything we know about a window from the compositor.
+data WindowInfo = WindowInfo
+  { wiNode       :: !ObjectId
+  , wiAppId      :: !String
+  , wiTitle      :: !String
+  , wiIdentifier :: !String
+  , wiParent     :: !(Maybe Window)
+  , wiMinSize    :: !(Int, Int)
+  , wiMaxSize    :: !(Int, Int)        -- ^ 0 = no preference
+  , wiDims       :: !(Maybe (Int, Int)) -- ^ actual size reported by the compositor
+  , wiDecoration :: !Word
+  , wiManaged    :: !Bool               -- ^ already went through the manage hook
+  , wiProposed   :: !(Maybe (Int, Int)) -- ^ last proposed size, to avoid resending
+  , wiTiled      :: !(Maybe Word)       -- ^ last set_tiled edges sent
+  , wiFullscreen :: !(Maybe ObjectId)   -- ^ output it is currently fullscreen on
+  , wiDecoSent   :: !(Maybe Bool)       -- ^ last use_ssd (True) / use_csd (False) sent
+  } deriving (Show)
+
+emptyWindowInfo :: ObjectId -> WindowInfo
+emptyWindowInfo node = WindowInfo
+  { wiNode = node, wiAppId = "", wiTitle = "", wiIdentifier = "", wiParent = Nothing
+  , wiMinSize = (0, 0), wiMaxSize = (0, 0), wiDims = Nothing, wiDecoration = 3
+  , wiManaged = False, wiProposed = Nothing, wiTiled = Nothing, wiFullscreen = Nothing
+  , wiDecoSent = Nothing }
+
+data OutputInfo = OutputInfo
+  { oiPos        :: !(Maybe (Int, Int))
+  , oiDims       :: !(Maybe (Int, Int))
+  , oiUsable     :: !(Maybe Rectangle)  -- ^ from river_layer_shell_output_v1
+  , oiLayerShell :: !(Maybe ObjectId)
+  } deriving (Show)
+
+data DragKind = DragMove | DragResize deriving (Show, Eq)
+
+data Drag = Drag
+  { dragKind   :: !DragKind
+  , dragWindow :: !Window
+  , dragStart  :: !Rectangle   -- ^ absolute geometry when the drag started
+  , dragDelta  :: !(Int, Int)
+  , dragSeat   :: !ObjectId
+  } deriving (Show)
+
+data SeatInfo = SeatInfo
+  { siBindings      :: ![ObjectId]          -- ^ xkb and pointer binding objects
+  , siEnabled       :: !Bool                -- ^ bindings enabled already
+  , siPointerWindow :: !(Maybe Window)
+  , siPointerPos    :: !(Maybe (Int, Int))
+  , siPosAtLayout   :: !(Maybe (Int, Int))  -- ^ pointer position at the last layout change
+  , siFocused       :: !(Maybe (Maybe Window)) -- ^ last focus request sent (Nothing = unknown)
+  , siLayerSeat     :: !(Maybe ObjectId)
+  , siLayerFocus    :: !Bool                -- ^ a layer surface (launcher, bar) has focus
+  } deriving (Show)
+
+data Globals = Globals
+  { gWm         :: !ObjectId
+  , gWmVersion  :: !Int
+  , gXkb        :: !ObjectId
+  , gLayerShell :: !(Maybe ObjectId)
+  }
+
+-- | Thrown to unwind the main loop so the new binary can be exec'd.
+data RestartNow = RestartNow deriving (Show)
+instance E.Exception RestartNow
+
+-- | Things the main loop reacts to.
+data Input
+  = InEvents [Event]
+  | InDisconnected String
+  | InRestart     -- ^ restart the window manager (SIGUSR1 or after recompiling)
+  | InQuit        -- ^ SIGTERM / SIGINT
+
+------------------------------------------------------------------------------
+-- Configuration
+
+class Default a where
+  def :: a
+
+data XConfig = XConfig
+  { terminal           :: !String
+  , modMask            :: !KeyMask
+  , borderWidth        :: !Int
+  , normalBorderColor  :: !String              -- ^ "#rrggbb" or "#rrggbbaa"
+  , focusedBorderColor :: !String
+  , workspaces         :: ![WorkspaceId]
+  , layoutHook         :: !(Layout Window)
+  , manageHook         :: !ManageHook
+  , keys               :: !(XConfig -> M.Map (KeyMask, KeySym) (X ()))
+  , mouseBindings      :: !(XConfig -> M.Map (KeyMask, Button) (Window -> X ()))
+  , startupHook        :: !(X ())
+  , logHook            :: !(X ())
+  , focusFollowsMouse  :: !Bool
+  , xcursorTheme       :: !(Maybe (String, Int))
+  }
+
+------------------------------------------------------------------------------
+-- The X monad
+
+data XConf = XConf
+  { config  :: !XConfig
+  , conn    :: !Conn
+  , globals :: !Globals
+  , inputs  :: !(Chan Input)
+  }
+
+data XState = XState
+  { windowset      :: !WindowSet
+  , windowInfo     :: !(M.Map Window WindowInfo)
+  , outputs        :: !(M.Map ObjectId OutputInfo)
+  , seats          :: !(M.Map ObjectId SeatInfo)
+  , keyActions     :: !(M.Map ObjectId (X ()))
+  , pointerActions :: !(M.Map ObjectId (ObjectId, Window -> X ())) -- ^ binding -> (seat, action)
+  , pending        :: ![X ()]          -- ^ actions for the next manage sequence (newest first)
+  , newWindows     :: ![Window]        -- ^ windows awaiting the manage hook (newest first)
+  , outputsDirty   :: !Bool
+  , haveScreens    :: !Bool
+  , fullscreen     :: !(S.Set Window)
+  , needsCenter    :: !(S.Set Window)  -- ^ floats to center once their size is known
+  , drag           :: !(Maybe Drag)
+  , sessionLocked  :: !Bool
+  , started        :: !Bool            -- ^ startup hook already ran
+  , restoreState   :: !(M.Map String (WorkspaceId, Maybe RationalRectS))
+  , restarting     :: !Bool
+  , restoreView    :: !(Maybe WorkspaceId) -- ^ workspace to show after a restart
+  }
+
+-- | Serializable float geometry used by the restart state file.
+type RationalRectS = (Rational, Rational, Rational, Rational)
+
+newtype X a = X (ReaderT XConf (StateT XState IO) a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadState XState, MonadReader XConf)
+
+instance Semigroup a => Semigroup (X a) where
+  a <> b = (<>) <$> a <*> b
+
+instance Monoid a => Monoid (X a) where
+  mempty = pure mempty
+
+runX :: XConf -> XState -> X a -> IO (a, XState)
+runX c st (X m) = runStateT (runReaderT m c) st
+
+io :: MonadIO m => IO a -> m a
+io = liftIO
+
+-- | Run an action, falling back to another one (and discarding state
+-- changes) if it throws. 'ExitCode' exceptions are re-thrown.
+catchX :: X a -> X a -> X a
+catchX job errcase = do
+  st <- get
+  c <- ask
+  (a, s') <- io $ runX c st job `E.catch` \(e :: E.SomeException) ->
+    case (E.fromException e, E.fromException e) of
+      (Just (_ :: ExitCode), _) -> E.throwIO e
+      (_, Just RestartNow) -> E.throwIO e
+      _ -> do
+        hPutStrLn stderr ("rivermonad: user code raised: " ++ show e)
+        runX c st errcase
+  put s'
+  pure a
+
+userCode :: X a -> X (Maybe a)
+userCode a = catchX (Just <$> a) (pure Nothing)
+
+userCodeDef :: a -> X a -> X a
+userCodeDef d a = maybe d id <$> userCode a
+
+withWindowSet :: (WindowSet -> X a) -> X a
+withWindowSet f = gets windowset >>= f
+
+------------------------------------------------------------------------------
+-- Queries
+
+-- | A computation that inspects a window, used by manage hooks.
+newtype Query a = Query (ReaderT Window X a)
+  deriving (Functor, Applicative, Monad, MonadReader Window, MonadIO)
+
+instance Semigroup a => Semigroup (Query a) where
+  a <> b = (<>) <$> a <*> b
+
+instance Monoid a => Monoid (Query a) where
+  mempty = pure mempty
+
+type ManageHook = Query (Endo WindowSet)
+
+runQuery :: Query a -> Window -> X a
+runQuery (Query m) = runReaderT m
+
+liftX :: X a -> Query a
+liftX = Query . lift

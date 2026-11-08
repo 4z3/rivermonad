@@ -1,0 +1,70 @@
+cabal-version:      3.0
+name:               rivermonad
+version:            0.1.0.0
+synopsis:           An xmonad-style tiling window manager for the river Wayland compositor
+description:
+  rivermonad brings xmonad's model (StackSet, layouts, manage hooks and a
+  Haskell configuration file) to Wayland. It runs as the window manager
+  process of river >= 0.4 and talks to it through the
+  river-window-management-v1 protocol, implemented in pure Haskell.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             prietus
+maintainer:         prietus@live.com
+category:           System
+build-type:         Simple
+extra-doc-files:    README.md
+data-files:         examples/rivermonad.hs
+extra-source-files: protocol/*.xml, tools/gen-protocol.py, tools/regen.sh
+
+common warnings
+  ghc-options: -Wall -Wno-name-shadowing -Wno-orphans
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  default-language: GHC2021
+  default-extensions: LambdaCase
+  exposed-modules:
+    Rivermonad
+    Rivermonad.Config
+    Rivermonad.Core
+    Rivermonad.Engine
+    Rivermonad.Keysym
+    Rivermonad.Layout
+    Rivermonad.Main
+    Rivermonad.ManageHook
+    Rivermonad.Operations
+    Rivermonad.Recompile
+    Rivermonad.StackSet
+    Rivermonad.Wayland.Protocol
+    Rivermonad.Wayland.Wire
+  other-modules:    Paths_rivermonad
+  autogen-modules:  Paths_rivermonad
+  build-depends:
+      base        >=4.16 && <5
+    , binary      >=0.8  && <0.11
+    , bytestring  >=0.11 && <0.13
+    , containers  >=0.6  && <0.8
+    , directory   >=1.3  && <1.4
+    , filepath    >=1.4  && <1.6
+    , mtl         >=2.2  && <2.4
+    , network     >=3.1  && <3.3
+    , process     >=1.6  && <1.7
+    , unix        >=2.7  && <2.9
+
+executable rivermonad
+  import:           warnings
+  main-is:          Main.hs
+  hs-source-dirs:   app
+  default-language: GHC2021
+  ghc-options:      -threaded -rtsopts
+  build-depends:    base, rivermonad
+
+test-suite stackset
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  main-is:          StackSetTests.hs
+  hs-source-dirs:   tests
+  default-language: GHC2021
+  build-depends:    base, containers, rivermonad
