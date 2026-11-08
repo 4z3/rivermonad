@@ -226,7 +226,8 @@ onOutput o e = case e of
       forM_ (oi >>= oiWlOutput) $ \(wo, v) ->
         if v >= 3 then wlOutputRelease c wo else forgetObject c wo
       riverOutputV1Destroy c o
-    modify $ \s -> s { outputs = M.delete o (outputs s), outputsDirty = True }
+    modify $ \s -> s { outputs = M.delete o (outputs s), outputsDirty = True
+                     , layerDefault = if layerDefault s == Just o then Nothing else layerDefault s }
   -- Bind the matching wl_output to learn the connector name (for bars).
   RiverOutputV1WlOutput name -> do
     gl <- gets (M.lookup name . registryGlobals)
@@ -542,6 +543,15 @@ applyManage = do
     let visSet = S.fromList visibleWins
     io $ forM_ (concatMap (W.integrate' . W.stack) (W.hidden ws)) $ \w ->
       unless (S.member w visSet) (riverWindowV1Hide c w)
+
+    -- Layer surfaces that don't pick an output (notifications, launchers,
+    -- bars started without one) open on the focused screen.
+    let curOut = sdOutput (W.screenDetail (W.current ws))
+    lso <- gets (\st -> M.lookup curOut (outputs st) >>= oiLayerShell)
+    prevDefault <- gets layerDefault
+    forM_ lso $ \l -> when (prevDefault /= Just curOut) $ do
+      io (riverLayerShellOutputV1SetDefault c l)
+      modify $ \st -> st { layerDefault = Just curOut }
 
     -- Keyboard focus.
     ss <- gets seats

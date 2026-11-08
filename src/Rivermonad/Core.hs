@@ -288,6 +288,7 @@ data XState = XState
   , extensibleState :: !(M.Map String (Either String StateExtension))
   , registryGlobals :: !(M.Map Word32 (B.ByteString, Word32)) -- ^ name -> (interface, version)
   , loggingOut      :: !(Maybe Int)     -- ^ a graceful logout is waiting for windows to close (attempt number)
+  , layerDefault    :: !(Maybe ObjectId) -- ^ output last made river's default for layer surfaces
   }
 
 -- | Serializable float geometry used by the restart state file.

@@ -153,7 +153,7 @@ runWM cfg = do
         , borderWidths = M.empty
         , extensibleState = M.fromList [ (k, Left v) | (k, v) <- rsExt restored ]
         , registryGlobals = M.fromList [ (n, (i, v)) | (n, i, v) <- globalsList ]
-        , loggingOut = Nothing }
+        , loggingOut = Nothing, layerDefault = Nothing }
 
   debug <- maybe False (`notElem` ["", "0"]) <$> lookupEnv "RIVERMONAD_DEBUG"
   r <- E.try (runX xconf st0 (mainLoop debug c ch))
