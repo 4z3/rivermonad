@@ -37,4 +37,33 @@
       <arg name="callback_data" type="uint"/>
     </event>
   </interface>
+  <interface name="wl_output" version="4">
+    <request name="release" type="destructor" since="3"/>
+    <event name="geometry">
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="physical_width" type="int"/>
+      <arg name="physical_height" type="int"/>
+      <arg name="subpixel" type="int"/>
+      <arg name="make" type="string"/>
+      <arg name="model" type="string"/>
+      <arg name="transform" type="int"/>
+    </event>
+    <event name="mode">
+      <arg name="flags" type="uint"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="refresh" type="int"/>
+    </event>
+    <event name="done" since="2"/>
+    <event name="scale" since="2">
+      <arg name="factor" type="int"/>
+    </event>
+    <event name="name" since="4">
+      <arg name="name" type="string"/>
+    </event>
+    <event name="description" since="4">
+      <arg name="description" type="string"/>
+    </event>
+  </interface>
 </protocol>

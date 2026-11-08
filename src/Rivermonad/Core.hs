@@ -9,7 +9,7 @@ module Rivermonad.Core
     Window, WorkspaceId, ScreenId (..), ScreenDetail (..), WindowSet, WindowSpace
   , Rectangle (..)
   , WindowInfo (..), OutputInfo (..), SeatInfo (..), Drag (..), DragKind (..)
-  , Globals (..), Input (..), RestartNow (..)
+  , Globals (..), Input (..), IPCAction (..), RestartNow (..)
     -- * Layouts
   , LayoutClass (..), Layout (..), readsLayout
   , Message, SomeMessage (..), fromMessage
@@ -30,7 +30,9 @@ import Control.Concurrent.Chan (Chan)
 import qualified Control.Exception as E
 import Control.Monad.Reader
 import Control.Monad.State.Strict
+import qualified Data.ByteString as B
 import qualified Data.Map.Strict as M
+import Data.Word (Word32)
 import Data.Monoid (All (..), Endo (..))
 import qualified Data.Set as S
 import Data.Typeable (Typeable, cast)
@@ -169,6 +171,8 @@ data OutputInfo = OutputInfo
   , oiDims       :: !(Maybe (Int, Int))
   , oiUsable     :: !(Maybe Rectangle)  -- ^ from river_layer_shell_output_v1
   , oiLayerShell :: !(Maybe ObjectId)
+  , oiWlOutput   :: !(Maybe (ObjectId, Word32)) -- ^ bound wl_output and its version
+  , oiName       :: !(Maybe String)             -- ^ connector name, e.g. "DP-1"
   } deriving (Show)
 
 data DragKind = DragMove | DragResize deriving (Show, Eq)
@@ -193,7 +197,8 @@ data SeatInfo = SeatInfo
   } deriving (Show)
 
 data Globals = Globals
-  { gWm         :: !ObjectId
+  { gRegistry   :: !ObjectId
+  , gWm         :: !ObjectId
   , gWmVersion  :: !Int
   , gXkb        :: !ObjectId
   , gLayerShell :: !(Maybe ObjectId)
@@ -203,9 +208,21 @@ data Globals = Globals
 data RestartNow = RestartNow deriving (Show)
 instance E.Exception RestartNow
 
+-- | Requests arriving on the IPC socket (see "Rivermonad.IPC").
+data IPCAction
+  = IPCFocusWorkspace WorkspaceId     -- ^ like 'W.view': may move focus to another screen
+  | IPCGreedyViewWorkspace WorkspaceId -- ^ like 'W.greedyView': bring it to this screen
+  | IPCNextLayout
+  | IPCJumpToLayout String
+  | IPCFocusUp
+  | IPCFocusDown
+  | IPCRestart
+  deriving (Show, Eq)
+
 -- | Things the main loop reacts to.
 data Input
   = InEvents [Event]
+  | InAction IPCAction
   | InDisconnected String
   | InRestart     -- ^ restart the window manager (SIGUSR1 or after recompiling)
   | InQuit        -- ^ SIGTERM / SIGINT
@@ -242,6 +259,7 @@ data XConf = XConf
   , conn    :: !Conn
   , globals :: !Globals
   , inputs  :: !(Chan Input)
+  , ipcPublish :: !(B.ByteString -> IO ()) -- ^ send a state line to IPC subscribers
   }
 
 data XState = XState
@@ -266,6 +284,7 @@ data XState = XState
   , restoreOrder    :: !(M.Map String (Int, Bool)) -- ^ identifier -> (stack position, focused)
   , borderWidths    :: !(M.Map Window Int)  -- ^ per-window border overrides set by layouts
   , extensibleState :: !(M.Map String (Either String StateExtension))
+  , registryGlobals :: !(M.Map Word32 (B.ByteString, Word32)) -- ^ name -> (interface, version)
   }
 
 -- | Serializable float geometry used by the restart state file.

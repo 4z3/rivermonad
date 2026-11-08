@@ -14,6 +14,7 @@ data Event
   = EvWlDisplay !ObjectId !WlDisplayEvent
   | EvWlRegistry !ObjectId !WlRegistryEvent
   | EvWlCallback !ObjectId !WlCallbackEvent
+  | EvWlOutput !ObjectId !WlOutputEvent
   | EvRiverWindowManagerV1 !ObjectId !RiverWindowManagerV1Event
   | EvRiverWindowV1 !ObjectId !RiverWindowV1Event
   | EvRiverOutputV1 !ObjectId !RiverOutputV1Event
@@ -31,6 +32,7 @@ decodeEvent :: ByteString -> ObjectId -> Word16 -> Maybe (Get (Event, [(ObjectId
 decodeEvent "wl_display" o op = fmap (\(e, ns) -> (EvWlDisplay o e, ns)) <$> decodeWlDisplayEvent op
 decodeEvent "wl_registry" o op = fmap (\(e, ns) -> (EvWlRegistry o e, ns)) <$> decodeWlRegistryEvent op
 decodeEvent "wl_callback" o op = fmap (\(e, ns) -> (EvWlCallback o e, ns)) <$> decodeWlCallbackEvent op
+decodeEvent "wl_output" o op = fmap (\(e, ns) -> (EvWlOutput o e, ns)) <$> decodeWlOutputEvent op
 decodeEvent "river_window_manager_v1" o op = fmap (\(e, ns) -> (EvRiverWindowManagerV1 o e, ns)) <$> decodeRiverWindowManagerV1Event op
 decodeEvent "river_window_v1" o op = fmap (\(e, ns) -> (EvRiverWindowV1 o e, ns)) <$> decodeRiverWindowV1Event op
 decodeEvent "river_output_v1" o op = fmap (\(e, ns) -> (EvRiverOutputV1 o e, ns)) <$> decodeRiverOutputV1Event op
@@ -114,6 +116,38 @@ data WlCallbackEvent
 decodeWlCallbackEvent :: Word16 -> Maybe (Get (WlCallbackEvent, [(ObjectId, ByteString)]))
 decodeWlCallbackEvent 0 = Just (do { a0 <- getUint; pure (WlCallbackDone a0, []) })
 decodeWlCallbackEvent _ = Nothing
+
+-- * wl_output (version 4)
+
+wlOutputInterface :: ByteString
+wlOutputInterface = "wl_output"
+
+wlOutputVersion :: Word32
+wlOutputVersion = 4
+
+data WlOutputEvent
+  = WlOutputGeometry !Int32 !Int32 !Int32 !Int32 !Int32 !ByteString !ByteString !Int32
+  | WlOutputMode !Word32 !Int32 !Int32 !Int32
+  | WlOutputDone
+  | WlOutputScale !Int32
+  | WlOutputName !ByteString
+  | WlOutputDescription !ByteString
+  deriving (Show)
+
+decodeWlOutputEvent :: Word16 -> Maybe (Get (WlOutputEvent, [(ObjectId, ByteString)]))
+decodeWlOutputEvent 0 = Just (do { a0 <- getInt; a1 <- getInt; a2 <- getInt; a3 <- getInt; a4 <- getInt; a5 <- getStr; a6 <- getStr; a7 <- getInt; pure (WlOutputGeometry a0 a1 a2 a3 a4 a5 a6 a7, []) })
+decodeWlOutputEvent 1 = Just (do { a0 <- getUint; a1 <- getInt; a2 <- getInt; a3 <- getInt; pure (WlOutputMode a0 a1 a2 a3, []) })
+decodeWlOutputEvent 2 = Just (pure (WlOutputDone, []))
+decodeWlOutputEvent 3 = Just (do { a0 <- getInt; pure (WlOutputScale a0, []) })
+decodeWlOutputEvent 4 = Just (do { a0 <- getStr; pure (WlOutputName a0, []) })
+decodeWlOutputEvent 5 = Just (do { a0 <- getStr; pure (WlOutputDescription a0, []) })
+decodeWlOutputEvent _ = Nothing
+
+-- | wl_output.release (opcode 0)
+wlOutputRelease :: Conn -> ObjectId -> IO ()
+wlOutputRelease c self = do
+  sendRequest c self 0 (mempty)
+  forgetObject c self
 
 -- * river_window_manager_v1 (version 6)
 

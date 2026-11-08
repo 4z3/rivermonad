@@ -34,6 +34,7 @@ library
     Rivermonad.Hooks.InsertPosition
     Rivermonad.Hooks.ManageHelpers
     Rivermonad.Hooks.StatusBar
+    Rivermonad.IPC
     Rivermonad.Keysym
     Rivermonad.Layout
     Rivermonad.Layout.Grid
@@ -44,6 +45,7 @@ library
     Rivermonad.Layout.Spacing
     Rivermonad.Layout.ThreeColumns
     Rivermonad.Layout.ToggleLayouts
+    Rivermonad.JSON
     Rivermonad.Main
     Rivermonad.ManageHook
     Rivermonad.Operations

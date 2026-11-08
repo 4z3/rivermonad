@@ -8,6 +8,7 @@ module Rivermonad.Engine
   , loadRestartState
   , restartStateFile
   , Restored (..)
+  , runIPCAction
   , applyRestoredLayouts
   ) where
 
@@ -30,6 +31,8 @@ import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 
 import Rivermonad.Core
+import qualified Rivermonad.JSON as J
+import Rivermonad.Layout (ChangeLayout (..), JumpToLayout (..))
 import Rivermonad.Operations
 import qualified Rivermonad.StackSet as W
 import Rivermonad.Wayland.Protocol
@@ -69,7 +72,14 @@ defaultHandler ev = case ev of
                       ++ show code ++ "): " ++ BC.unpack msg)
     exitFailure
   EvWlDisplay _ (WlDisplayDeleteId i) -> withConn (\c -> forgetObject c (ObjectId i))
-  EvWlRegistry {} -> pure ()
+  EvWlRegistry _ (WlRegistryGlobal n iface v) ->
+    modify $ \s -> s { registryGlobals = M.insert n (iface, v) (registryGlobals s) }
+  EvWlRegistry _ (WlRegistryGlobalRemove n) ->
+    modify $ \s -> s { registryGlobals = M.delete n (registryGlobals s) }
+  EvWlOutput o (WlOutputName n) ->
+    modify $ \s -> s { outputs = M.map (\oi -> if fmap fst (oiWlOutput oi) == Just o
+                                                then oi { oiName = Just (utf8 n) } else oi) (outputs s) }
+  EvWlOutput {} -> pure ()
   EvWlCallback o _ -> withConn (\c -> forgetObject c o)
   EvRiverWindowManagerV1 _ e -> onManager e
   EvRiverWindowV1 w e -> onWindow w e
@@ -151,7 +161,7 @@ onManager e = case e of
     lso <- case ls of
       Just l -> Just <$> withConn (\c -> riverLayerShellV1GetOutput c l o)
       Nothing -> pure Nothing
-    modify $ \s -> s { outputs = M.insert o (OutputInfo Nothing Nothing Nothing lso) (outputs s)
+    modify $ \s -> s { outputs = M.insert o (OutputInfo Nothing Nothing Nothing lso Nothing Nothing) (outputs s)
                      , outputsDirty = True }
   RiverWindowManagerV1Seat s -> setupSeat s
 
@@ -213,8 +223,18 @@ onOutput o e = case e of
     oi <- gets (M.lookup o . outputs)
     withConn $ \c -> do
       forM_ (oi >>= oiLayerShell) (riverLayerShellOutputV1Destroy c)
+      forM_ (oi >>= oiWlOutput) $ \(wo, v) ->
+        if v >= 3 then wlOutputRelease c wo else forgetObject c wo
       riverOutputV1Destroy c o
     modify $ \s -> s { outputs = M.delete o (outputs s), outputsDirty = True }
+  -- Bind the matching wl_output to learn the connector name (for bars).
+  RiverOutputV1WlOutput name -> do
+    gl <- gets (M.lookup name . registryGlobals)
+    reg <- asks (gRegistry . globals)
+    forM_ gl $ \(iface, v) -> when (iface == wlOutputInterface) $ do
+      let v' = min v 4
+      wo <- withConn (\c -> wlRegistryBind c reg name wlOutputInterface v')
+      modify $ \s -> s { outputs = M.adjust (\i -> i { oiWlOutput = Just (wo, v') }) o (outputs s) }
   RiverOutputV1Position x y -> upd (\i -> i { oiPos = Just (fi x, fi y) })
   RiverOutputV1Dimensions w h -> upd (\i -> i { oiDims = Just (fi w, fi h) })
   _ -> pure ()
@@ -334,6 +354,7 @@ onManageStart = do
   catchX manageBody (pure ())
   g <- asks globals
   withConn (\c -> riverWindowManagerV1ManageFinish c (gWm g))
+  catchX publishState (pure ())
   r <- gets restarting
   when r $ do
     saveRestartState
@@ -653,3 +674,55 @@ applyRestoredLayouts template saved = W.mapWorkspace $ \wsp ->
     parse str = case readsLayout template str of
       [(l, rest)] | all (== ' ') rest -> Just l
       _ -> Nothing
+
+------------------------------------------------------------------------------
+-- IPC
+
+-- | Run an action requested on the IPC socket (inside a manage sequence).
+runIPCAction :: IPCAction -> X ()
+runIPCAction a = case a of
+  IPCFocusWorkspace t -> windows (W.view t)
+  IPCGreedyViewWorkspace t -> windows (W.greedyView t)
+  IPCNextLayout -> sendMessage NextLayout
+  IPCJumpToLayout n -> sendMessage (JumpToLayout n)
+  IPCFocusUp -> windows W.focusUp
+  IPCFocusDown -> windows W.focusDown
+  IPCRestart -> requestRestart
+
+-- | Publish the state to IPC subscribers (they only get it when it changes).
+--
+-- @{"State":{"workspaces":[...],"focused_output":...,"title":...,"app_id":...}}@
+-- Each workspace: name, idx (1-based, configuration order first), output
+-- (connector name or null), focused, visible, windows, layout, extra (not
+-- in the configured workspaces, e.g. the scratchpad one).
+publishState :: X ()
+publishState = do
+  ws <- gets windowset
+  infos <- gets windowInfo
+  outs <- gets outputs
+  tags <- asks (workspaces . config)
+  publish <- asks ipcPublish
+  have <- gets haveScreens
+  let outName sd = M.lookup (sdOutput sd) outs >>= oiName
+      shownOn = M.fromList [ (W.tag (W.workspace s), outName (W.screenDetail s)) | have, s <- W.screens ws ]
+      extras = [ W.tag w | w <- W.workspaces ws, W.tag w `notElem` tags ]
+      ordered = tags ++ extras
+      byTag = M.fromList [ (W.tag w, w) | w <- W.workspaces ws ]
+      wsJson i t = do
+        w <- M.lookup t byTag
+        pure $ J.obj
+          [ ("name", J.str t)
+          , ("idx", J.JNum (fromIntegral (i :: Int)))
+          , ("output", maybe J.JNull J.str (M.lookup t shownOn >>= id))
+          , ("focused", J.JBool (have && t == W.currentTag ws))
+          , ("visible", J.JBool (M.member t shownOn))
+          , ("windows", J.JNum (fromIntegral (length (W.integrate' (W.stack w)))))
+          , ("layout", J.str (description (W.layout w)))
+          , ("extra", J.JBool (t `notElem` tags)) ]
+      focusedInfo = W.peek ws >>= \w -> M.lookup w infos
+      state = J.obj [ ("State", J.obj
+        [ ("workspaces", J.JArr [ j | (i, t) <- zip [1 ..] ordered, Just j <- [wsJson i t] ])
+        , ("focused_output", maybe J.JNull J.str (if have then outName (W.screenDetail (W.current ws)) else Nothing))
+        , ("title", maybe J.JNull (J.str . wiTitle) focusedInfo)
+        , ("app_id", maybe J.JNull (J.str . wiAppId) focusedInfo) ]) ]
+  io (publish (J.renderUtf8 state))

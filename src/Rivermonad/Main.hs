@@ -33,6 +33,8 @@ import Rivermonad.Config (defaultConfig)
 import Rivermonad.Engine
 import Rivermonad.Recompile
 import Rivermonad.Status (runStatusClient)
+import Rivermonad.IPC (publishIPC, runIPCClient, startIPCServer)
+import Rivermonad.Operations (queue)
 import qualified Rivermonad.StackSet as W
 import Rivermonad.Wayland.Protocol
 import Rivermonad.Wayland.Wire
@@ -46,7 +48,7 @@ launch = do
   d <- getDirs
   haveCfg <- doesFileExist (cfgSource d)
   self <- getExecutablePath
-  let passthrough = any (`elem` args) ["--version", "--help", "--restart", "--status"]
+  let passthrough = any (`elem` args) ["--version", "--help", "--restart", "--status", "--ipc"]
   if haveCfg && self /= cfgBinary d && not passthrough && args /= ["--recompile"]
     then do
       _ <- recompile False
@@ -68,6 +70,7 @@ rivermonad cfg = do
       exitWith (if ok then ExitSuccess else ExitFailure 1)
     ["--restart"] -> signalRunning
     ["--status"] -> runStatusClient
+    ["--ipc", req] -> runIPCClient req
     ["--help"] -> putStr usage
     [] -> runWM cfg
     _ -> hPutStr' usage >> exitFailure
@@ -80,6 +83,8 @@ usage = unlines
   , "  --recompile    recompile ~/.config/rivermonad/rivermonad.hs"
   , "  --restart      ask the running rivermonad to restart"
   , "  --status       print status lines (JSON) for waybar's custom modules"
+  , "  --ipc REQUEST  send a JSON request to the IPC socket, e.g."
+  , "                 --ipc '\"EventStream\"'  or  --ipc '{\"Action\":{\"FocusWorkspace\":\"2\"}}'"
   , "  --version      print the version"
   ]
 
@@ -132,8 +137,10 @@ runWM cfg = do
   getProcessID >>= \pid -> void (E.try (writeFile pf (show pid)) :: IO (Either E.IOException ()))
 
   restored <- loadRestartState
-  let g = Globals { gWm = wm, gWmVersion = fromIntegral wmv, gXkb = xkb, gLayerShell = fst <$> mls }
-      xconf = XConf { config = cfg, conn = c, globals = g, inputs = ch }
+  ipcSrv <- startIPCServer ch
+  let g = Globals { gRegistry = registry, gWm = wm, gWmVersion = fromIntegral wmv, gXkb = xkb, gLayerShell = fst <$> mls }
+      xconf = XConf { config = cfg, conn = c, globals = g, inputs = ch
+                    , ipcPublish = maybe (const (pure ())) publishIPC ipcSrv }
       ws0 = applyRestoredLayouts (layoutHook cfg) (rsLayouts restored)
               (W.new (layoutHook cfg) (workspaces cfg) [SD nullObject (Rectangle 0 0 0 0)])
       st0 = XState
@@ -144,7 +151,8 @@ runWM cfg = do
         , restoreState = rsWindows restored, restarting = False, restoreView = rsView restored
         , restoreOrder = rsOrder restored
         , borderWidths = M.empty
-        , extensibleState = M.fromList [ (k, Left v) | (k, v) <- rsExt restored ] }
+        , extensibleState = M.fromList [ (k, Left v) | (k, v) <- rsExt restored ]
+        , registryGlobals = M.fromList [ (n, (i, v)) | (n, i, v) <- globalsList ] }
 
   debug <- maybe False (`notElem` ["", "0"]) <$> lookupEnv "RIVERMONAD_DEBUG"
   r <- E.try (runX xconf st0 (mainLoop debug c ch))
@@ -208,5 +216,6 @@ mainLoop debug c ch = forever $ do
       hPutStrLn stderr ("rivermonad: lost connection to the compositor: " ++ why)
       exitFailure
     InRestart -> requestRestart
+    InAction a -> queue (runIPCAction a)
     InQuit -> io exitSuccess
   io (flush c)
