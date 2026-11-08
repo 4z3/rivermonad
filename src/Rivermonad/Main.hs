@@ -14,6 +14,7 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as BL
 import Data.Binary.Get (runGetOrFail)
 import qualified Data.Map.Strict as M
+import Data.List (isSuffixOf)
 import Data.Maybe (catMaybes)
 import qualified Data.Set as S
 import Data.Version (showVersion)
@@ -145,11 +146,20 @@ runWM cfg = do
     Left RestartNow -> do
       void (E.try (removeFile pf) :: IO (Either E.IOException ()))
       closeConn c
-      self <- getExecutablePath
+      self <- currentExecutable
       executeFile self False [] Nothing
     Right _ -> pure ()
   where
     die' msg = hPutStrLn stderr ("rivermonad: " ++ msg) >> exitFailure
+
+-- | Path of our own binary. After a recompile the running file has been
+-- replaced, and Linux reports the old inode as "<path> (deleted)": exec the
+-- new file at the same path instead.
+currentExecutable :: IO FilePath
+currentExecutable = do
+  p <- getExecutablePath
+  let suffix = " (deleted)"
+  pure $ if suffix `isSuffixOf` p then take (length p - length suffix) p else p
 
 -- | Read events until the sync callback fires, collecting the globals.
 collectGlobals :: Conn -> ObjectId -> [(Word32, BC.ByteString, Word32)] -> IO [(Word32, BC.ByteString, Word32)]

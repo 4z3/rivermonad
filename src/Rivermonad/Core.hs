@@ -66,6 +66,7 @@ data WindowInfo = WindowInfo
   , wiTiled      :: !(Maybe Word)       -- ^ last set_tiled edges sent
   , wiFullscreen :: !(Maybe ObjectId)   -- ^ output it is currently fullscreen on
   , wiDecoSent   :: !(Maybe Bool)       -- ^ last use_ssd (True) / use_csd (False) sent
+  , wiGeom       :: !(Maybe Rectangle)  -- ^ last placement, borders included
   } deriving (Show)
 
 emptyWindowInfo :: ObjectId -> WindowInfo
@@ -73,7 +74,7 @@ emptyWindowInfo node = WindowInfo
   { wiNode = node, wiAppId = "", wiTitle = "", wiIdentifier = "", wiParent = Nothing
   , wiMinSize = (0, 0), wiMaxSize = (0, 0), wiDims = Nothing, wiDecoration = 3
   , wiManaged = False, wiProposed = Nothing, wiTiled = Nothing, wiFullscreen = Nothing
-  , wiDecoSent = Nothing }
+  , wiDecoSent = Nothing, wiGeom = Nothing }
 
 data OutputInfo = OutputInfo
   { oiPos        :: !(Maybe (Int, Int))

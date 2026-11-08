@@ -59,6 +59,18 @@ over from xmonad mostly means:
 | `className =? "Firefox"`        | `appId =? "firefox"` (`className` is an alias) |
 | `dmenu_run`                     | `fuzzel`, `bemenu-run`, `wmenu-run` |
 
+If you'd rather not install the library globally, put an executable
+`~/.config/rivermonad/build` script next to the config; it receives the output
+path as `$1`. For example, to build against a rivermonad checkout:
+
+```sh
+#!/bin/sh
+CFG="$PWD"
+cd ~/src/rivermonad && exec env -u XDG_CACHE_HOME cabal -v0 exec -- \
+  ghc --make "$CFG/rivermonad.hs" -i"$CFG/lib" -threaded -v0 \
+  -outputdir "$(dirname "$1")/build" -o "$1"
+```
+
 Key bindings take xkbcommon keysyms (`xK_*`, the same values as in X11), using
 the unshifted key together with `shiftMask`.
 

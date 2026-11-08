@@ -116,10 +116,10 @@ windowGeometry w = do
       scr = sdRect (screenOfWindow w ws)
   pure $ case M.lookup w (W.floating ws) of
     Just rr -> Just (fromRationalRect scr rr)
+    Nothing | Just g <- M.lookup w infos >>= wiGeom -> Just g
     Nothing -> do
+      -- Never placed yet: centre a window of its current size.
       (dw, dh) <- M.lookup w infos >>= wiDims
-      -- Tiled windows are not tracked precisely; centre a window of the
-      -- current size, which is what a fresh float would look like anyway.
       let fw = dw + 2 * bw
           fh = dh + 2 * bw
       pure (Rectangle (rect_x scr + (rect_width scr - fw) `div` 2)

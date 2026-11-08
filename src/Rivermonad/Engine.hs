@@ -429,7 +429,7 @@ applyManage = do
             io $ do
               riverWindowV1SetBorders c w (if bw > 0 then 15 else 0) (fi bw) r' g' b' a'
               riverWindowV1Show c w
-            modifyInfo w (const i')
+            modifyInfo w (const i' { wiGeom = if isJust fsOut then wiGeom i else Just r })
 
     visibleWins <- fmap concat $ mapM (\scr -> do
       let sd = W.screenDetail scr
