@@ -458,6 +458,10 @@ createBar env o out = do
     ls <- zwlrLayerShellV1GetLayerSurface c shell surf o lyr (encodeUtf8 (namespace cfg))
     zwlrLayerSurfaceV1SetSize c ls 0 (fromIntegral (eHeight env))
     zwlrLayerSurfaceV1SetAnchor c ls (edge .|. zwlrLayerSurfaceV1AnchorLeft .|. zwlrLayerSurfaceV1AnchorRight)
+    -- The compositor adds the margin of the anchored edge to the exclusive
+    -- zone, so windows still start right below (or above) the bar.
+    let (mt, mr, mb, ml) = margins cfg
+    zwlrLayerSurfaceV1SetMargin c ls (fromIntegral mt) (fromIntegral mr) (fromIntegral mb) (fromIntegral ml)
     zwlrLayerSurfaceV1SetExclusiveZone c ls (if exclusive cfg then fromIntegral (eHeight env) else 0)
     wlSurfaceCommit c surf
     modifyIORef' st $ \s -> s

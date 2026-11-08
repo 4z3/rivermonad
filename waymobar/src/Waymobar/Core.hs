@@ -37,6 +37,10 @@ data Config = Config
   , position      :: Position
   , layer         :: Layer
   , exclusive     :: Bool      -- ^ reserve the bar's space (tiled windows avoid it)
+  , margins       :: (Int, Int, Int, Int)
+    -- ^ space around the bar (top, right, bottom, left), in logical pixels.
+    -- Match rivermonad's outer gap to line the bar up with the windows,
+    -- e.g. @(1, 1, 0, 1)@ with @gapsWithEdge 1@.
   , bgColor       :: String    -- ^ @#rrggbb@ or @#rrggbbaa@
   , fgColor       :: String
   , left          :: [Widget]
@@ -58,6 +62,7 @@ defaultConfig = Config
   , position = Top
   , layer = TopLayer
   , exclusive = True
+  , margins = (0, 0, 0, 0)
   , bgColor = "#2e3440"
   , fgColor = "#d8dee9"
   , left = []

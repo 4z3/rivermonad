@@ -70,6 +70,7 @@ the output path as `$1` (same convention as rivermonad, e.g. to build with
 | `position` | `Top` | or `Bottom` |
 | `layer` | `TopLayer` | `BackgroundLayer`, `BottomLayer`, `OverlayLayer` |
 | `exclusive` | `True` | reserve the bar's space |
+| `margins` | `(0, 0, 0, 0)` | space around the bar (top, right, bottom, left); `(0, 1, 0, 1)` lines it up with rivermonad's `gapsWithEdge 1` |
 | `bgColor`, `fgColor` | Nord | `#rgb`, `#rrggbb`, `#rrggbbaa` |
 | `left`, `center`, `right` | | lists of widgets |
 | `widgetSpacing`, `edgePadding` | `12`, `4` | pixels |
