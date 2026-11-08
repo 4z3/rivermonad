@@ -217,6 +217,8 @@ data IPCAction
   | IPCFocusUp
   | IPCFocusDown
   | IPCRestart
+  | IPCLogout                         -- ^ close every window, then end the session
+  | IPCLogoutCheck Int                -- ^ internal: the graceful logout timed out
   deriving (Show, Eq)
 
 -- | Things the main loop reacts to.
@@ -285,6 +287,7 @@ data XState = XState
   , borderWidths    :: !(M.Map Window Int)  -- ^ per-window border overrides set by layouts
   , extensibleState :: !(M.Map String (Either String StateExtension))
   , registryGlobals :: !(M.Map Word32 (B.ByteString, Word32)) -- ^ name -> (interface, version)
+  , loggingOut      :: !(Maybe Int)     -- ^ a graceful logout is waiting for windows to close (attempt number)
   }
 
 -- | Serializable float geometry used by the restart state file.

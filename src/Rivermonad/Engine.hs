@@ -375,6 +375,7 @@ manageBody = do
   mapM_ manageWindow new
   reorderRestored
   runPending
+  checkLogout
   lh <- asks (logHook . config)
   void (userCode lh)
   applyManage
@@ -688,6 +689,8 @@ runIPCAction a = case a of
   IPCFocusUp -> windows W.focusUp
   IPCFocusDown -> windows W.focusDown
   IPCRestart -> requestRestart
+  IPCLogout -> logoutGracefully
+  IPCLogoutCheck n -> logoutTimedOut n
 
 -- | Publish the state to IPC subscribers (they only get it when it changes).
 --

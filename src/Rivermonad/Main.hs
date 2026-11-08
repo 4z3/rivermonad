@@ -152,7 +152,8 @@ runWM cfg = do
         , restoreOrder = rsOrder restored
         , borderWidths = M.empty
         , extensibleState = M.fromList [ (k, Left v) | (k, v) <- rsExt restored ]
-        , registryGlobals = M.fromList [ (n, (i, v)) | (n, i, v) <- globalsList ] }
+        , registryGlobals = M.fromList [ (n, (i, v)) | (n, i, v) <- globalsList ]
+        , loggingOut = Nothing }
 
   debug <- maybe False (`notElem` ["", "0"]) <$> lookupEnv "RIVERMONAD_DEBUG"
   r <- E.try (runX xconf st0 (mainLoop debug c ch))

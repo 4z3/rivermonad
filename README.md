@@ -150,6 +150,24 @@ exec env -u XDG_CACHE_HOME -u XDG_CONFIG_HOME cabal -v0 exec -- \
 Key bindings take xkbcommon keysyms (`xK_*`, the same values as in X11), using
 the unshifted key together with `shiftMask`.
 
+### Logging out
+
+`exitSession` ends the session at once (river closes every client).
+`logoutGracefully` asks every window to close first, as if its close button
+was clicked, so applications can save or ask; the session ends when the
+last one is gone, and with GDM or another display manager you are back at
+the login screen. If a window is still open after 10 seconds (an
+unsaved-changes dialog, say) the logout is cancelled and that window is
+focused (`logoutGracefullyWith` changes the timeout). Bind it in place of
+the default `mod-shift-q`:
+
+```haskell
+myKeys = [ ("M-S-q", logoutGracefully) ]
+```
+
+The same is available on the IPC socket (`rivermonad --ipc
+'{"Action":"Logout"}'`) and as waymobar's `logoutButton`.
+
 ### Differences from xmonad
 
 * xmonad-contrib itself does not compile against rivermonad (it depends on

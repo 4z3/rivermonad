@@ -63,4 +63,5 @@ rivermonad --ipc '{"Action":"NextLayout"}'
 ```
 
 Actions: `{"FocusWorkspace":name}`, `{"ViewWorkspace":name}`, `"NextLayout"`,
-`{"JumpToLayout":name}`, `"FocusUp"`, `"FocusDown"`, `"Restart"`.
+`{"JumpToLayout":name}`, `"FocusUp"`, `"FocusDown"`, `"Restart"`, `"Logout"`
+(close every window gracefully, then end the session; see `logoutGracefully`).

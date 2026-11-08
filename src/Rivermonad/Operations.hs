@@ -10,11 +10,12 @@ module Rivermonad.Operations
   , mouseMoveWindow, mouseResizeWindow, startDrag, endDrag, updateDrag
   , screenWorkspace
   , restart, recompileAndRestart, exitSession
+  , logoutGracefully, logoutGracefullyWith, checkLogout, logoutTimedOut
   , queue
   , toRationalRect, fromRationalRect
   ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.Chan (writeChan)
 import qualified Control.Exception as E
 import Control.Monad (void, when, forM_)
@@ -22,6 +23,7 @@ import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Set as S
 import System.Exit (ExitCode (..), exitSuccess)
+import System.IO (hPutStrLn, stderr)
 import System.Posix.Process (createSession, executeFile, exitImmediately, forkProcess, getProcessStatus)
 
 import Rivermonad.Core
@@ -216,6 +218,57 @@ recompileAndRestart = do
   void $ io $ forkIO $ do
     ok <- recompile False
     when ok (writeChan ch InRestart)
+
+-- | Log out without losing work: ask every window to close (as if its close
+-- button was clicked, so applications can save or ask), and end the
+-- session once none is left. If some window is still open after 10
+-- seconds (an unsaved-changes dialog, say), the logout is cancelled and
+-- that window is focused, instead of killing it.
+--
+-- With a display manager (GDM, SDDM...) this goes back to the login screen.
+logoutGracefully :: X ()
+logoutGracefully = logoutGracefullyWith 10
+
+-- | 'logoutGracefully' with another timeout, in seconds.
+logoutGracefullyWith :: Int -> X ()
+logoutGracefullyWith secs = do
+  ws <- gets (M.keys . windowInfo)
+  if null ws
+    then exitSession
+    else do
+      n <- gets (maybe 1 (+ 1) . loggingOut)
+      modify $ \s -> s { loggingOut = Just n }
+      mapM_ killWindow ws
+      ch <- asks inputs
+      void $ io $ forkIO $ do
+        threadDelay (secs * 1000000)
+        writeChan ch (InAction (IPCLogoutCheck n))
+
+-- | Called after every manage sequence: end the session once a graceful
+-- logout has seen every window close.
+checkLogout :: X ()
+checkLogout = do
+  lo <- gets loggingOut
+  ws <- gets windowInfo
+  when (lo /= Nothing && M.null ws) $ do
+    modify $ \s -> s { loggingOut = Nothing }
+    exitSession
+
+-- | The logout timer of attempt @n@ ran out: cancel it if windows remain.
+logoutTimedOut :: Int -> X ()
+logoutTimedOut n = do
+  lo <- gets loggingOut
+  when (lo == Just n) $ do
+    modify $ \s -> s { loggingOut = Nothing }
+    infos <- gets windowInfo
+    forM_ (listToMaybe (M.keys infos)) focus
+    let names = [ if null (wiTitle i) then wiAppId i else wiTitle i | i <- M.elems infos ]
+        msg = "Logout cancelled: " ++ show (length names) ++ " window(s) still open"
+              ++ concatMap ("\n• " ++) (take 5 names)
+    io (hPutStrLn stderr ("rivermonad: " ++ msg))
+    spawn ("notify-send -a rivermonad 'Logout cancelled' " ++ shellQuote (drop 18 msg))
+  where
+    shellQuote s = "'" ++ concatMap (\c -> if c == '\'' then "'\\''" else [c]) s ++ "'"
 
 -- | End the whole Wayland session (river exits, every client is closed).
 exitSession :: X ()
