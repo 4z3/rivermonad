@@ -340,10 +340,10 @@ index 2fd3e3b..35bfa3d 100644
        return new waybar::modules::niri::Language(id, bar_, config_[name]);
 diff --git a/src/modules/rivermonad/backend.cpp b/src/modules/rivermonad/backend.cpp
 new file mode 100644
-index 0000000..b8f9000
+index 0000000..b882fc2
 --- /dev/null
 +++ b/src/modules/rivermonad/backend.cpp
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,171 @@
 +#include "modules/rivermonad/backend.hpp"
 +
 +#include <spdlog/spdlog.h>
@@ -359,13 +359,20 @@ index 0000000..b8f9000
 +
 +namespace waybar::modules::rivermonad {
 +
++// The socket of the rivermonad managing this Wayland display, if it exists;
++// $RIVERMONAD_SOCKET only as a fallback. The variable alone is not trusted:
++// in a session nested inside another rivermonad it is inherited from the
++// outer one.
 +std::string IPC::socketPath() {
-+  if (const char* env = getenv("RIVERMONAD_SOCKET"); env != nullptr && *env != '\0') return env;
 +  const char* runtime = getenv("XDG_RUNTIME_DIR");
 +  const char* display = getenv("WAYLAND_DISPLAY");
 +  std::string disp = display != nullptr ? display : "wayland-0";
 +  std::replace(disp.begin(), disp.end(), '/', '_');
-+  return std::string(runtime != nullptr ? runtime : "/tmp") + "/rivermonad-" + disp + ".sock";
++  std::string own =
++      std::string(runtime != nullptr ? runtime : "/tmp") + "/rivermonad-" + disp + ".sock";
++  if (access(own.c_str(), F_OK) == 0) return own;
++  if (const char* env = getenv("RIVERMONAD_SOCKET"); env != nullptr && *env != '\0') return env;
++  return own;
 +}
 +
 +int IPC::connectToSocket() {
@@ -419,6 +426,7 @@ index 0000000..b8f9000
 +void IPC::startIPC() {
 +  std::thread([this]() {
 +    bool warned = false;
++    int failures = 0;
 +    for (;;) {
 +      int fd = connectToSocket();
 +      if (fd == -1) {
@@ -426,10 +434,14 @@ index 0000000..b8f9000
 +          spdlog::warn("rivermonad IPC: cannot connect to {}, retrying", socketPath());
 +          warned = true;
 +        }
-+        std::this_thread::sleep_for(std::chrono::seconds(1));
++        // Keep showing the last state while rivermonad restarts (mod-q takes
++        // about a second); only clear it once it has been gone for ~3 s.
++        if (++failures == 10) setState(Json::Value(), false);
++        std::this_thread::sleep_for(std::chrono::milliseconds(300));
 +        continue;
 +      }
 +      warned = false;
++      failures = 0;
 +      spdlog::info("rivermonad IPC: connected");
 +
 +      LineReader reader(fd);
@@ -449,8 +461,8 @@ index 0000000..b8f9000
 +      }
 +      close(fd);
 +
-+      // rivermonad went away (restart or exit): show nothing until it is back.
-+      setState(Json::Value(), false);
++      // rivermonad went away (restart or exit): keep the last state for now,
++      // the reconnection loop above clears it if rivermonad does not return.
 +      std::this_thread::sleep_for(std::chrono::milliseconds(300));
 +    }
 +  }).detach();

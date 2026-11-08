@@ -28,7 +28,7 @@ import Data.IORef
 import Data.Maybe (fromMaybe)
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
-import System.Directory (removeFile)
+import System.Directory (doesPathExist, removeFile)
 import System.Environment (lookupEnv, setEnv)
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
@@ -42,12 +42,18 @@ data IPCServer = IPCServer
   , srvLast :: IORef B.ByteString
   }
 
--- | The socket path: @RIVERMONAD_SOCKET@ if set, otherwise derived from
--- the Wayland display.
+-- | The socket of the rivermonad managing /this/ Wayland display, if it
+-- exists; @RIVERMONAD_SOCKET@ only as a fallback. The variable alone is not
+-- trusted: in a session nested inside another rivermonad it is inherited
+-- from the outer one.
 ipcSocketPath :: IO FilePath
-ipcSocketPath = lookupEnv "RIVERMONAD_SOCKET" >>= \case
-  Just p | not (null p) -> pure p
-  _ -> defaultPath
+ipcSocketPath = do
+  own <- defaultPath
+  ownExists <- doesPathExist own
+  env <- lookupEnv "RIVERMONAD_SOCKET"
+  pure $ case env of
+    Just p | not ownExists, not (null p) -> p
+    _ -> own
 
 defaultPath :: IO FilePath
 defaultPath = do
