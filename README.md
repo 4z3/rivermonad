@@ -64,9 +64,10 @@ Not ported: modules that draw their own UI in X11 (`Prompt`, `GridSelect`,
 
 ### Status bar
 
-**waymobar** (`waymobar/`) is a native bar written and configured in
-Haskell, with rivermonad widgets built in. See
-[waymobar/README.md](waymobar/README.md).
+**[waymobar](https://github.com/prietus/waymobar)** is a native bar written
+and configured in Haskell, with rivermonad widgets built in (workspaces,
+layout, window title) read from rivermonad's IPC socket. It lives in its
+own repository.
 
 With waybar instead:
 
