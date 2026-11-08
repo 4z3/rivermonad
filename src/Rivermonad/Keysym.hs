@@ -1,5 +1,6 @@
--- | xkbcommon keysyms (same values as X11 keysyms) and modifier masks.
--- Use the unshifted keysym together with 'shiftMask', as in xmonad.
+-- | GENERATED (see git history): xkbcommon keysyms (same values as X11
+-- keysyms) and modifier masks. Use the unshifted keysym together with
+-- 'shiftMask', as in xmonad.
 module Rivermonad.Keysym where
 
 import Data.Word (Word32)
@@ -58,32 +59,76 @@ xK_Print :: KeySym
 xK_Print = 0xff61
 xK_Insert :: KeySym
 xK_Insert = 0xff63
+xK_Menu :: KeySym
+xK_Menu = 0xff67
+xK_Pause :: KeySym
+xK_Pause = 0xff13
+xK_Scroll_Lock :: KeySym
+xK_Scroll_Lock = 0xff14
+xK_exclam :: KeySym
+xK_exclam = 0x21
+xK_quotedbl :: KeySym
+xK_quotedbl = 0x22
+xK_numbersign :: KeySym
+xK_numbersign = 0x23
+xK_dollar :: KeySym
+xK_dollar = 0x24
+xK_percent :: KeySym
+xK_percent = 0x25
+xK_ampersand :: KeySym
+xK_ampersand = 0x26
+xK_apostrophe :: KeySym
+xK_apostrophe = 0x27
+xK_parenleft :: KeySym
+xK_parenleft = 0x28
+xK_parenright :: KeySym
+xK_parenright = 0x29
+xK_asterisk :: KeySym
+xK_asterisk = 0x2a
+xK_plus :: KeySym
+xK_plus = 0x2b
 xK_comma :: KeySym
 xK_comma = 0x2c
+xK_minus :: KeySym
+xK_minus = 0x2d
 xK_period :: KeySym
 xK_period = 0x2e
 xK_slash :: KeySym
 xK_slash = 0x2f
-xK_minus :: KeySym
-xK_minus = 0x2d
-xK_equal :: KeySym
-xK_equal = 0x3d
-xK_plus :: KeySym
-xK_plus = 0x2b
+xK_colon :: KeySym
+xK_colon = 0x3a
 xK_semicolon :: KeySym
 xK_semicolon = 0x3b
-xK_apostrophe :: KeySym
-xK_apostrophe = 0x27
-xK_grave :: KeySym
-xK_grave = 0x60
-xK_backslash :: KeySym
-xK_backslash = 0x5c
-xK_bracketleft :: KeySym
-xK_bracketleft = 0x5b
-xK_bracketright :: KeySym
-xK_bracketright = 0x5d
+xK_less :: KeySym
+xK_less = 0x3c
+xK_equal :: KeySym
+xK_equal = 0x3d
+xK_greater :: KeySym
+xK_greater = 0x3e
 xK_question :: KeySym
 xK_question = 0x3f
+xK_at :: KeySym
+xK_at = 0x40
+xK_bracketleft :: KeySym
+xK_bracketleft = 0x5b
+xK_backslash :: KeySym
+xK_backslash = 0x5c
+xK_bracketright :: KeySym
+xK_bracketright = 0x5d
+xK_asciicircum :: KeySym
+xK_asciicircum = 0x5e
+xK_underscore :: KeySym
+xK_underscore = 0x5f
+xK_grave :: KeySym
+xK_grave = 0x60
+xK_braceleft :: KeySym
+xK_braceleft = 0x7b
+xK_bar :: KeySym
+xK_bar = 0x7c
+xK_braceright :: KeySym
+xK_braceright = 0x7d
+xK_asciitilde :: KeySym
+xK_asciitilde = 0x7e
 xK_a :: KeySym
 xK_a = 0x61
 xK_b :: KeySym
@@ -180,19 +225,260 @@ xK_F11 :: KeySym
 xK_F11 = 0xffc8
 xK_F12 :: KeySym
 xK_F12 = 0xffc9
-xK_XF86AudioMute :: KeySym
-xK_XF86AudioMute = 0x1008ff12
-xK_XF86AudioLowerVolume :: KeySym
-xK_XF86AudioLowerVolume = 0x1008ff11
-xK_XF86AudioRaiseVolume :: KeySym
-xK_XF86AudioRaiseVolume = 0x1008ff13
-xK_XF86AudioPlay :: KeySym
-xK_XF86AudioPlay = 0x1008ff14
-xK_XF86AudioNext :: KeySym
-xK_XF86AudioNext = 0x1008ff17
-xK_XF86AudioPrev :: KeySym
-xK_XF86AudioPrev = 0x1008ff16
+xK_F13 :: KeySym
+xK_F13 = 0xffca
+xK_F14 :: KeySym
+xK_F14 = 0xffcb
+xK_F15 :: KeySym
+xK_F15 = 0xffcc
+xK_F16 :: KeySym
+xK_F16 = 0xffcd
+xK_F17 :: KeySym
+xK_F17 = 0xffce
+xK_F18 :: KeySym
+xK_F18 = 0xffcf
+xK_F19 :: KeySym
+xK_F19 = 0xffd0
+xK_F20 :: KeySym
+xK_F20 = 0xffd1
+xK_F21 :: KeySym
+xK_F21 = 0xffd2
+xK_F22 :: KeySym
+xK_F22 = 0xffd3
+xK_F23 :: KeySym
+xK_F23 = 0xffd4
+xK_F24 :: KeySym
+xK_F24 = 0xffd5
+xK_KP_0 :: KeySym
+xK_KP_0 = 0xffb0
+xK_KP_1 :: KeySym
+xK_KP_1 = 0xffb1
+xK_KP_2 :: KeySym
+xK_KP_2 = 0xffb2
+xK_KP_3 :: KeySym
+xK_KP_3 = 0xffb3
+xK_KP_4 :: KeySym
+xK_KP_4 = 0xffb4
+xK_KP_5 :: KeySym
+xK_KP_5 = 0xffb5
+xK_KP_6 :: KeySym
+xK_KP_6 = 0xffb6
+xK_KP_7 :: KeySym
+xK_KP_7 = 0xffb7
+xK_KP_8 :: KeySym
+xK_KP_8 = 0xffb8
+xK_KP_9 :: KeySym
+xK_KP_9 = 0xffb9
+xK_KP_Enter :: KeySym
+xK_KP_Enter = 0xff8d
+xK_KP_Add :: KeySym
+xK_KP_Add = 0xffab
+xK_KP_Subtract :: KeySym
+xK_KP_Subtract = 0xffad
+xK_KP_Multiply :: KeySym
+xK_KP_Multiply = 0xffaa
+xK_KP_Divide :: KeySym
+xK_KP_Divide = 0xffaf
+xK_KP_Decimal :: KeySym
+xK_KP_Decimal = 0xffae
 xK_XF86MonBrightnessUp :: KeySym
 xK_XF86MonBrightnessUp = 0x1008ff02
 xK_XF86MonBrightnessDown :: KeySym
 xK_XF86MonBrightnessDown = 0x1008ff03
+xK_XF86KbdBrightnessUp :: KeySym
+xK_XF86KbdBrightnessUp = 0x1008ff05
+xK_XF86KbdBrightnessDown :: KeySym
+xK_XF86KbdBrightnessDown = 0x1008ff06
+xK_XF86AudioLowerVolume :: KeySym
+xK_XF86AudioLowerVolume = 0x1008ff11
+xK_XF86AudioMute :: KeySym
+xK_XF86AudioMute = 0x1008ff12
+xK_XF86AudioRaiseVolume :: KeySym
+xK_XF86AudioRaiseVolume = 0x1008ff13
+xK_XF86AudioPlay :: KeySym
+xK_XF86AudioPlay = 0x1008ff14
+xK_XF86AudioStop :: KeySym
+xK_XF86AudioStop = 0x1008ff15
+xK_XF86AudioPrev :: KeySym
+xK_XF86AudioPrev = 0x1008ff16
+xK_XF86AudioNext :: KeySym
+xK_XF86AudioNext = 0x1008ff17
+xK_XF86AudioPause :: KeySym
+xK_XF86AudioPause = 0x1008ff31
+xK_XF86AudioMicMute :: KeySym
+xK_XF86AudioMicMute = 0x1008ffb2
+xK_XF86HomePage :: KeySym
+xK_XF86HomePage = 0x1008ff18
+xK_XF86Mail :: KeySym
+xK_XF86Mail = 0x1008ff19
+xK_XF86Search :: KeySym
+xK_XF86Search = 0x1008ff1b
+xK_XF86Calculator :: KeySym
+xK_XF86Calculator = 0x1008ff1d
+xK_XF86Explorer :: KeySym
+xK_XF86Explorer = 0x1008ff5d
+xK_XF86Sleep :: KeySym
+xK_XF86Sleep = 0x1008ff2f
+xK_XF86PowerOff :: KeySym
+xK_XF86PowerOff = 0x1008ff2a
+xK_XF86Display :: KeySym
+xK_XF86Display = 0x1008ff59
+xK_XF86WLAN :: KeySym
+xK_XF86WLAN = 0x1008ff95
+xK_XF86Tools :: KeySym
+xK_XF86Tools = 0x1008ff81
+
+-- | Keysyms by their xkbcommon name, used by "Rivermonad.Util.EZConfig".
+keysymNames :: [(String, KeySym)]
+keysymNames =
+  [ ("Return", 0xff0d)
+  , ("space", 0x20)
+  , ("Tab", 0xff09)
+  , ("Escape", 0xff1b)
+  , ("BackSpace", 0xff08)
+  , ("Delete", 0xffff)
+  , ("Home", 0xff50)
+  , ("Left", 0xff51)
+  , ("Up", 0xff52)
+  , ("Right", 0xff53)
+  , ("Down", 0xff54)
+  , ("Page_Up", 0xff55)
+  , ("Page_Down", 0xff56)
+  , ("End", 0xff57)
+  , ("Print", 0xff61)
+  , ("Insert", 0xff63)
+  , ("Menu", 0xff67)
+  , ("Pause", 0xff13)
+  , ("Scroll_Lock", 0xff14)
+  , ("exclam", 0x21)
+  , ("quotedbl", 0x22)
+  , ("numbersign", 0x23)
+  , ("dollar", 0x24)
+  , ("percent", 0x25)
+  , ("ampersand", 0x26)
+  , ("apostrophe", 0x27)
+  , ("parenleft", 0x28)
+  , ("parenright", 0x29)
+  , ("asterisk", 0x2a)
+  , ("plus", 0x2b)
+  , ("comma", 0x2c)
+  , ("minus", 0x2d)
+  , ("period", 0x2e)
+  , ("slash", 0x2f)
+  , ("colon", 0x3a)
+  , ("semicolon", 0x3b)
+  , ("less", 0x3c)
+  , ("equal", 0x3d)
+  , ("greater", 0x3e)
+  , ("question", 0x3f)
+  , ("at", 0x40)
+  , ("bracketleft", 0x5b)
+  , ("backslash", 0x5c)
+  , ("bracketright", 0x5d)
+  , ("asciicircum", 0x5e)
+  , ("underscore", 0x5f)
+  , ("grave", 0x60)
+  , ("braceleft", 0x7b)
+  , ("bar", 0x7c)
+  , ("braceright", 0x7d)
+  , ("asciitilde", 0x7e)
+  , ("a", 0x61)
+  , ("b", 0x62)
+  , ("c", 0x63)
+  , ("d", 0x64)
+  , ("e", 0x65)
+  , ("f", 0x66)
+  , ("g", 0x67)
+  , ("h", 0x68)
+  , ("i", 0x69)
+  , ("j", 0x6a)
+  , ("k", 0x6b)
+  , ("l", 0x6c)
+  , ("m", 0x6d)
+  , ("n", 0x6e)
+  , ("o", 0x6f)
+  , ("p", 0x70)
+  , ("q", 0x71)
+  , ("r", 0x72)
+  , ("s", 0x73)
+  , ("t", 0x74)
+  , ("u", 0x75)
+  , ("v", 0x76)
+  , ("w", 0x77)
+  , ("x", 0x78)
+  , ("y", 0x79)
+  , ("z", 0x7a)
+  , ("0", 0x30)
+  , ("1", 0x31)
+  , ("2", 0x32)
+  , ("3", 0x33)
+  , ("4", 0x34)
+  , ("5", 0x35)
+  , ("6", 0x36)
+  , ("7", 0x37)
+  , ("8", 0x38)
+  , ("9", 0x39)
+  , ("F1", 0xffbe)
+  , ("F2", 0xffbf)
+  , ("F3", 0xffc0)
+  , ("F4", 0xffc1)
+  , ("F5", 0xffc2)
+  , ("F6", 0xffc3)
+  , ("F7", 0xffc4)
+  , ("F8", 0xffc5)
+  , ("F9", 0xffc6)
+  , ("F10", 0xffc7)
+  , ("F11", 0xffc8)
+  , ("F12", 0xffc9)
+  , ("F13", 0xffca)
+  , ("F14", 0xffcb)
+  , ("F15", 0xffcc)
+  , ("F16", 0xffcd)
+  , ("F17", 0xffce)
+  , ("F18", 0xffcf)
+  , ("F19", 0xffd0)
+  , ("F20", 0xffd1)
+  , ("F21", 0xffd2)
+  , ("F22", 0xffd3)
+  , ("F23", 0xffd4)
+  , ("F24", 0xffd5)
+  , ("KP_0", 0xffb0)
+  , ("KP_1", 0xffb1)
+  , ("KP_2", 0xffb2)
+  , ("KP_3", 0xffb3)
+  , ("KP_4", 0xffb4)
+  , ("KP_5", 0xffb5)
+  , ("KP_6", 0xffb6)
+  , ("KP_7", 0xffb7)
+  , ("KP_8", 0xffb8)
+  , ("KP_9", 0xffb9)
+  , ("KP_Enter", 0xff8d)
+  , ("KP_Add", 0xffab)
+  , ("KP_Subtract", 0xffad)
+  , ("KP_Multiply", 0xffaa)
+  , ("KP_Divide", 0xffaf)
+  , ("KP_Decimal", 0xffae)
+  , ("XF86MonBrightnessUp", 0x1008ff02)
+  , ("XF86MonBrightnessDown", 0x1008ff03)
+  , ("XF86KbdBrightnessUp", 0x1008ff05)
+  , ("XF86KbdBrightnessDown", 0x1008ff06)
+  , ("XF86AudioLowerVolume", 0x1008ff11)
+  , ("XF86AudioMute", 0x1008ff12)
+  , ("XF86AudioRaiseVolume", 0x1008ff13)
+  , ("XF86AudioPlay", 0x1008ff14)
+  , ("XF86AudioStop", 0x1008ff15)
+  , ("XF86AudioPrev", 0x1008ff16)
+  , ("XF86AudioNext", 0x1008ff17)
+  , ("XF86AudioPause", 0x1008ff31)
+  , ("XF86AudioMicMute", 0x1008ffb2)
+  , ("XF86HomePage", 0x1008ff18)
+  , ("XF86Mail", 0x1008ff19)
+  , ("XF86Search", 0x1008ff1b)
+  , ("XF86Calculator", 0x1008ff1d)
+  , ("XF86Explorer", 0x1008ff5d)
+  , ("XF86Sleep", 0x1008ff2f)
+  , ("XF86PowerOff", 0x1008ff2a)
+  , ("XF86Display", 0x1008ff59)
+  , ("XF86WLAN", 0x1008ff95)
+  , ("XF86Tools", 0x1008ff81)
+  ]

@@ -6,7 +6,13 @@ import Data.List (nub, sort)
 import qualified Data.Map as M
 import System.Exit (exitFailure)
 
+import Rivermonad.Config (defaultConfig)
+import Rivermonad.Keysym
 import Rivermonad.Layout
+import Rivermonad.Layout.Grid (arrange)
+import Rivermonad.Layout.ResizableTile (ResizableTall (..))
+import Rivermonad.Layout.ThreeColumns (ThreeCol (..))
+import Rivermonad.Util.EZConfig (readKey)
 import qualified Rivermonad.StackSet as W
 
 type T = W.StackSet String () Int Int ()
@@ -51,10 +57,25 @@ main = do
     , check "Shrink reduces the master ratio" (fmap tallRatio shrunk == Just (2 / 5))
     , check "Tall splits two windows side by side" (map (rect_x . snd) mirrored == [0, 50])
     , check "layouts round-trip through Read" (fmap show (readsTall (show (Tall 2 (1 / 10) (1 / 3) :: Tall Int))) == Just (show (Tall 2 (1 / 10) (1 / 3) :: Tall Int)))
+    , check "EZConfig: M-S-<Return>" (readKey defaultConfig "M-S-<Return>" == Just (mod4Mask + shiftMask, xK_Return))
+    , check "EZConfig: C-M1-x and <XF86AudioMute>" (readKey defaultConfig "C-M1-x" == Just (controlMask + mod1Mask, xK_x)
+                                                    && readKey defaultConfig "<XF86AudioMute>" == Just (0, xK_XF86AudioMute))
+    , check "EZConfig: aliases and errors" (readKey defaultConfig "M-<Esc>" == Just (mod4Mask, xK_Escape)
+                                            && readKey defaultConfig "M-<Nope>" == Nothing && readKey defaultConfig "M-" == Nothing)
+    , check "Grid covers the screen without overlap" (gridOk 5 && gridOk 7 && gridOk 1)
+    , check "ThreeColMid puts the master in the middle" (threeMid == [250, 750, 750, 0])
+    , check "ResizableTall honours relative heights" (map (rect_height . snd) resizable == [800, 200, 600])
     , check "mirrorRect is an involution" (mirrorRect (mirrorRect (Rectangle 1 2 3 4)) == Rectangle 1 2 3 4)
     ]
   unless (and rs) exitFailure
   where
+    area = Rectangle 0 0 1000 800
+    gridOk n = let rs' = map snd (arrange 1 area [1 .. n :: Int])
+               in length rs' == n && sum [ rect_width r * rect_height r | r <- rs' ] == 1000 * 800
+    threeMid = map (rect_x . snd) (maybe [] (pureLayout (ThreeColMid 1 (3 / 100) (1 / 2) :: ThreeCol Int) area)
+                                     (W.differentiate [1, 2, 3, 4 :: Int]))
+    resizable = maybe [] (pureLayout (ResizableTall 1 (3 / 100) (1 / 2) [1, 1, 3] :: ResizableTall Int) area)
+                  (W.differentiate [1, 2, 3 :: Int])
     readsTall :: String -> Maybe (Tall Int)
     readsTall str = case reads str of
       [(x, "")] -> Just x

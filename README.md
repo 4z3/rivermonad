@@ -27,7 +27,55 @@ the stable `river-window-management-v1` protocol. Because of this split:
 * compositor-drawn borders, client fullscreen requests and `mod-f`
 * layer-shell (waybar, fuzzel, …), with the space taken by bars excluded
 * `~/.config/rivermonad/rivermonad.hs` recompiled with ghc; `mod-q`
-  recompiles and restarts while keeping each window on its workspace
+  recompiles and restarts while keeping each window's workspace, stack
+  position and focus, every workspace's layout state and persistent
+  extensible state
+* xmonad's extension points: layouts in `X` (`doLayout`, `handleMessage`),
+  `LayoutModifier`, `ExtensibleState`, `handleEventHook`
+
+## Contrib modules
+
+Ports of the most used xmonad-contrib modules ship in the same package, with
+the `XMonad.` prefix replaced by `Rivermonad.`:
+
+| Module | What it does |
+|---|---|
+| `Rivermonad.Util.EZConfig` | `additionalKeysP` with `"M-S-<Return>"`-style strings |
+| `Rivermonad.Util.SpawnOnce` | `spawnOnce`: start programs once per session, not per restart |
+| `Rivermonad.Util.NamedScratchpad` | toggleable scratchpad windows |
+| `Rivermonad.Util.ExtensibleState` | typed state for your own modules (`XS.get`/`XS.put`) |
+| `Rivermonad.Actions.CycleWS` | `nextWS`, `prevWS`, `toggleWS`, `moveTo Next EmptyWS`, screens |
+| `Rivermonad.Hooks.ManageHelpers` | `composeOne`, `-?>`, `doRectFloat`, `doFullFloat`, `transience` |
+| `Rivermonad.Hooks.InsertPosition` | `insertPosition Below Newer` |
+| `Rivermonad.Hooks.StatusBar` | status line for waybar (see below) |
+| `Rivermonad.Layout.LayoutModifier` | write your own layout modifiers |
+| `Rivermonad.Layout.NoBorders` | `noBorders`, `smartBorders` |
+| `Rivermonad.Layout.Spacing` | `spacing`, `spacingWithEdge`, `smartSpacing`, `incSpacing` |
+| `Rivermonad.Layout.ToggleLayouts` | `toggleLayouts (noBorders Full) myLayouts` |
+| `Rivermonad.Layout.PerWorkspace` | `onWorkspace "web" Full myLayouts` |
+| `Rivermonad.Layout.ThreeColumns` | `ThreeCol`, `ThreeColMid` |
+| `Rivermonad.Layout.Grid` | `Grid` |
+| `Rivermonad.Layout.ResizableTile` | `ResizableTall` with `MirrorShrink`/`MirrorExpand` |
+
+Not ported: modules that draw their own UI in X11 (`Prompt`, `GridSelect`,
+`Tabbed`, decorations); use fuzzel & co. instead of prompts.
+
+### Status bar (waybar)
+
+`withStatusBar def myConfig` makes rivermonad publish its state; `rivermonad
+--status` prints it as JSON lines, which a waybar `custom` module reads:
+
+```jsonc
+"modules-left": ["custom/rivermonad"],
+"custom/rivermonad": {
+  "exec": "rivermonad --status",
+  "return-type": "json",
+  "escape": false
+}
+```
+
+Customise it with a `PP` like xmonad's (`ppCurrent`, `ppHidden`, `ppTitle`,
+`ppOrder`, …); the text uses Pango markup (`pangoColor "#88c0d0"`).
 
 ## Installation
 
@@ -67,7 +115,7 @@ path as `$1`. For example, to build against a rivermonad checkout:
 #!/bin/sh
 CFG="$PWD"
 cd ~/src/rivermonad && exec env -u XDG_CACHE_HOME cabal -v0 exec -- \
-  ghc --make "$CFG/rivermonad.hs" -i"$CFG/lib" -threaded -v0 \
+  ghc --make -package rivermonad "$CFG/rivermonad.hs" -i"$CFG/lib" -threaded -v0 \
   -outputdir "$(dirname "$1")/build" -o "$1"
 ```
 
@@ -76,12 +124,12 @@ the unshifted key together with `shiftMask`.
 
 ### Differences from xmonad
 
-* Layouts are pure (`pureLayout`/`pureMessage`); there is no `doLayout` in `X`
-  yet, and xmonad-contrib does not compile against rivermonad.
+* xmonad-contrib itself does not compile against rivermonad (it depends on
+  X11); the modules above are ports.
+* `layoutHook` takes a `Layout`: write `Layout (a ||| b)`.
 * New Wayland windows have no position of their own, so floating windows are
   centred at the size they choose.
-* A restart keeps each window's workspace and floating geometry, but not the
-  layout state of each workspace.
+* Restarts identify windows by river's stable window identifier.
 
 ## Development
 

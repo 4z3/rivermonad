@@ -27,19 +27,33 @@ library
   default-extensions: LambdaCase
   exposed-modules:
     Rivermonad
+    Rivermonad.Actions.CycleWS
     Rivermonad.Config
     Rivermonad.Core
     Rivermonad.Engine
+    Rivermonad.Hooks.InsertPosition
+    Rivermonad.Hooks.ManageHelpers
+    Rivermonad.Hooks.StatusBar
     Rivermonad.Keysym
     Rivermonad.Layout
+    Rivermonad.Layout.Grid
     Rivermonad.Layout.LayoutModifier
+    Rivermonad.Layout.NoBorders
+    Rivermonad.Layout.PerWorkspace
+    Rivermonad.Layout.ResizableTile
+    Rivermonad.Layout.Spacing
+    Rivermonad.Layout.ThreeColumns
+    Rivermonad.Layout.ToggleLayouts
     Rivermonad.Main
     Rivermonad.ManageHook
     Rivermonad.Operations
     Rivermonad.Recompile
     Rivermonad.StackSet
     Rivermonad.Status
+    Rivermonad.Util.EZConfig
     Rivermonad.Util.ExtensibleState
+    Rivermonad.Util.NamedScratchpad
+    Rivermonad.Util.SpawnOnce
     Rivermonad.Wayland.Protocol
     Rivermonad.Wayland.Wire
   other-modules:    Paths_rivermonad
