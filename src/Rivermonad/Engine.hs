@@ -7,6 +7,8 @@ module Rivermonad.Engine
   , saveRestartState
   , loadRestartState
   , restartStateFile
+  , Restored (..)
+  , applyRestoredLayouts
   ) where
 
 import qualified Control.Exception as E
@@ -18,6 +20,8 @@ import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe, isJust)
 import Data.Monoid (Endo (..))
 import qualified Data.Set as S
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import Data.Word (Word32)
 import System.Directory (removeFile)
 import System.Environment (lookupEnv)
@@ -26,7 +30,6 @@ import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 
 import Rivermonad.Core
-import Rivermonad.Layout
 import Rivermonad.Operations
 import qualified Rivermonad.StackSet as W
 import Rivermonad.Wayland.Protocol
@@ -35,8 +38,32 @@ import Rivermonad.Wayland.Wire
 ------------------------------------------------------------------------------
 -- Dispatch
 
+-- | Run the user's 'handleEventHook' first; it may veto default handling.
 handleEvent :: Event -> X ()
-handleEvent ev = case ev of
+handleEvent ev = do
+  hook <- asks (handleEventHook . config)
+  continue <- userCodeDef (All True) (hook ev)
+  when (getAll continue || critical ev) (defaultHandler ev)
+  where
+    -- Skipping these would freeze or desynchronise the session.
+    critical = \case
+      EvWlDisplay {} -> True
+      EvRiverWindowManagerV1 _ e -> case e of
+        RiverWindowManagerV1ManageStart -> True
+        RiverWindowManagerV1RenderStart -> True
+        RiverWindowManagerV1Finished -> True
+        RiverWindowManagerV1Unavailable -> True
+        RiverWindowManagerV1Window _ -> True
+        RiverWindowManagerV1Output _ -> True
+        RiverWindowManagerV1Seat _ -> True
+        _ -> False
+      EvRiverWindowV1 _ RiverWindowV1Closed -> True
+      EvRiverOutputV1 _ RiverOutputV1Removed -> True
+      EvRiverSeatV1 _ RiverSeatV1Removed -> True
+      _ -> False
+
+defaultHandler :: Event -> X ()
+defaultHandler ev = case ev of
   EvWlDisplay _ (WlDisplayError o code msg) -> io $ do
     hPutStrLn stderr ("rivermonad: protocol error on " ++ show o ++ " (code "
                       ++ show code ++ "): " ++ BC.unpack msg)
@@ -79,6 +106,10 @@ handleEvent ev = case ev of
 -- already followed by a manage_start.
 queue' :: X () -> X ()
 queue' a = modify $ \s -> s { pending = a : pending s }
+
+-- | Wayland strings are UTF-8.
+utf8 :: BC.ByteString -> String
+utf8 = T.unpack . TE.decodeUtf8Lenient
 
 withConn :: (Conn -> IO a) -> X a
 withConn f = asks conn >>= io . f
@@ -134,9 +165,9 @@ onWindow w e = case e of
     modifyInfo w (\i -> i { wiMinSize = (fi a, fi b), wiMaxSize = (fi c, fi d) })
   RiverWindowV1Dimensions width height ->
     modifyInfo w (\i -> i { wiDims = Just (fi width, fi height) })
-  RiverWindowV1AppId s -> modifyInfo w (\i -> i { wiAppId = BC.unpack s })
-  RiverWindowV1Title s -> modifyInfo w (\i -> i { wiTitle = BC.unpack s })
-  RiverWindowV1Identifier s -> modifyInfo w (\i -> i { wiIdentifier = BC.unpack s })
+  RiverWindowV1AppId s -> modifyInfo w (\i -> i { wiAppId = utf8 s })
+  RiverWindowV1Title s -> modifyInfo w (\i -> i { wiTitle = utf8 s })
+  RiverWindowV1Identifier s -> modifyInfo w (\i -> i { wiIdentifier = utf8 s })
   RiverWindowV1Parent p ->
     modifyInfo w (\i -> i { wiParent = if p == nullObject then Nothing else Just p })
   RiverWindowV1DecorationHint h -> modifyInfo w (\i -> i { wiDecoration = fi h })
@@ -279,7 +310,9 @@ onSeat s e = case e of
     when ffm $ queue' $ do
       -- Only follow the pointer if it really moved: windows sliding under a
       -- still pointer (after a layout change) must not steal the focus.
-      moved <- gets (maybe False (\i -> siPointerPos i /= siPosAtLayout i) . M.lookup s . seats)
+      -- No reference position yet (startup, restart) means no real movement.
+      moved <- gets (maybe False (\i -> isJust (siPosAtLayout i) && siPointerPos i /= siPosAtLayout i)
+                       . M.lookup s . seats)
       dragging <- gets (isJust . drag)
       when (moved && not dragging) (focus w)
   RiverSeatV1PointerLeave -> upd (\i -> i { siPointerWindow = Nothing })
@@ -319,6 +352,7 @@ manageBody = do
   new <- gets (reverse . newWindows)
   modify $ \s -> s { newWindows = [] }
   mapM_ manageWindow new
+  reorderRestored
   runPending
   lh <- asks (logHook . config)
   void (userCode lh)
@@ -364,8 +398,11 @@ manageWindow w = do
       Just (t, mr) -> do
         modify $ \s -> s { restoreState = M.delete (wiIdentifier info) (restoreState s) }
         windows $ \ws ->
-          let ws' = W.insertUp w ws
-              ws'' = if W.tagMember t ws' then W.shiftWin t w ws' else ws'
+          let ws0 = W.insertUp w ws
+              -- Workspaces created at runtime (e.g. the scratchpad one) come back too.
+              ws' = if W.tagMember t ws0 then ws0
+                    else ws0 { W.hidden = W.hidden ws0 ++ [W.Workspace t (W.layout (W.workspace (W.current ws0))) Nothing] }
+              ws'' = W.shiftWin t w ws'
           in maybe ws'' (\(a, b, cc, d) -> W.float w (W.RationalRect a b cc d) ws'') mr
       Nothing -> do
         let (mw, mh) = wiMinSize info
@@ -380,24 +417,48 @@ manageWindow w = do
         g <- appEndo <$> userCodeDef (Endo id) (runQuery mh' w)
         windows (g . f)
 
+-- | After a restart, windows come back in river's order; put each workspace
+-- back in the saved order with the saved focus. Unknown windows go last.
+reorderRestored :: X ()
+reorderRestored = do
+  order <- gets restoreOrder
+  unless (M.null order) $ do
+    infos <- gets windowInfo
+    let key w = M.lookup w infos >>= \i -> M.lookup (wiIdentifier i) order
+        fix wsp = case W.stack wsp of
+          Nothing -> wsp
+          Just st ->
+            let sorted = sortOn (\w -> maybe (maxBound :: Int) fst (key w)) (W.integrate st)
+                foc = case [ w | w <- sorted, Just (_, True) <- [key w] ] of
+                  (f : _) -> f
+                  [] -> W.focus st
+                (before, after) = break (== foc) sorted
+            in wsp { W.stack = Just (W.Stack foc (reverse before) (drop 1 after)) }
+    windows (W.mapWorkspace fix)
+    pendingRestore <- gets restoreState
+    when (M.null pendingRestore) $ modify $ \s -> s { restoreOrder = M.empty }
+
 -- | Push the window set to the compositor. Must run inside a manage sequence.
 applyManage :: X ()
 applyManage = do
   have <- gets haveScreens
+  -- Layout modifiers (e.g. noBorders) set these again while laying out.
+  modify $ \s -> s { borderWidths = M.empty }
   when have $ do
     c <- asks conn
     cfg <- asks config
     ws <- gets windowset
     fs <- gets fullscreen
     centre <- gets needsCenter
-    let bw = borderWidth cfg
-        flt = W.floating ws
+    let flt = W.floating ws
         focused = W.peek ws
         normalC = parseColor (normalBorderColor cfg)
         focusC = parseColor (focusedBorderColor cfg)
 
         place sd w r tiled = do
           minfo <- gets (M.lookup w . windowInfo)
+          override <- gets (M.lookup w . borderWidths)
+          let bw = fromMaybe (borderWidth cfg) override
           forM_ minfo $ \i -> do
             let fsOut = if S.member w fs then Just (sdOutput sd) else Nothing
                 Rectangle rx ry rw rh = r
@@ -427,7 +488,7 @@ applyManage = do
                 pure i { wiFullscreen = Nothing, wiProposed = Just size, wiTiled = Just edges }
             let (r', g', b', a') = if Just w == focused then focusC else normalC
             io $ do
-              riverWindowV1SetBorders c w (if bw > 0 then 15 else 0) (fi bw) r' g' b' a'
+              riverWindowV1SetBorders c w (if bw > 0 then 15 else 0) (fi (max 0 bw)) r' g' b' a'
               riverWindowV1Show c w
             modifyInfo w (const i' { wiGeom = if isJust fsOut then wiGeom i else Just r })
 
@@ -435,8 +496,11 @@ applyManage = do
       let sd = W.screenDetail scr
           wsp = W.workspace scr
           allW = W.integrate' (W.stack wsp)
-          tiled = runLayout (W.layout wsp) (sdRect sd) (W.stack wsp >>= W.filter (`M.notMember` flt))
           floats = [ (w, fromRationalRect (sdRect sd) rr) | w <- allW, Just rr <- [M.lookup w flt] ]
+          tiledWs = wsp { W.stack = W.stack wsp >>= W.filter (`M.notMember` flt) }
+      (tiled, ml') <- userCodeDef ([], Nothing) (runLayout tiledWs (sdRect sd))
+      forM_ ml' $ \l' -> setLayoutOf (W.tag wsp) l'
+      let
           -- Tiled windows the layout chose not to show (e.g. under Full) are hidden.
           shownTiled = S.fromList (map fst tiled)
       forM_ tiled $ \(w, r) -> place sd w r True
@@ -528,29 +592,64 @@ restartStateFile = do
   disp <- fromMaybe "wayland-0" <$> lookupEnv "WAYLAND_DISPLAY"
   pure (dir </> ("rivermonad-" ++ map (\ch -> if ch == '/' then '_' else ch) disp ++ ".state"))
 
-type SavedState = (WorkspaceId, [(String, WorkspaceId, Maybe (Rational, Rational, Rational, Rational))])
+type FloatS = Maybe (Rational, Rational, Rational, Rational)
+
+-- | What survives a restart: the current workspace, each window's workspace
+-- and floating geometry (by river identifier), every workspace's layout and
+-- the persistent extensible state.
+type SavedState = (WorkspaceId, [(String, WorkspaceId, FloatS, Int, Bool)], [(WorkspaceId, String)], [(String, String)])
+
+data Restored = Restored
+  { rsView    :: Maybe WorkspaceId
+  , rsWindows :: M.Map String (WorkspaceId, FloatS)
+  , rsOrder   :: M.Map String (Int, Bool)
+  , rsLayouts :: [(WorkspaceId, String)]
+  , rsExt     :: [(String, String)]
+  }
 
 saveRestartState :: X ()
 saveRestartState = do
   ws <- gets windowset
   infos <- gets windowInfo
+  ext <- gets extensibleState
   let entries =
-        [ (wiIdentifier i, W.tag wsp, fmap (\(W.RationalRect a b c d) -> (a, b, c, d)) (M.lookup w (W.floating ws)))
+        [ ( wiIdentifier i, W.tag wsp
+          , fmap (\(W.RationalRect a b c d) -> (a, b, c, d)) (M.lookup w (W.floating ws))
+          , pos, Just w == fmap W.focus (W.stack wsp) )
         | wsp <- W.workspaces ws
-        , w <- reverse (W.integrate' (W.stack wsp))  -- insertUp reverses again on restore
+        , (pos, w) <- zip [0 ..] (W.integrate' (W.stack wsp))
         , Just i <- [M.lookup w infos]
         , not (null (wiIdentifier i)) ]
-      saved = (W.currentTag ws, entries) :: SavedState
+      layouts = [ (W.tag wsp, show (W.layout wsp)) | wsp <- W.workspaces ws ]
+      exts = [ (k, v) | (k, e) <- M.toList ext
+                      , Just v <- [case e of
+                                     Left str -> Just str
+                                     Right (PersistentExtension x) -> Just (show x)
+                                     Right (StateExtension _) -> Nothing] ]
+      saved = (W.currentTag ws, entries, layouts, exts) :: SavedState
   path <- io restartStateFile
   io $ void (E.try (writeFile path (show saved)) :: IO (Either E.IOException ()))
 
-loadRestartState :: IO (Maybe WorkspaceId, M.Map String (WorkspaceId, Maybe (Rational, Rational, Rational, Rational)))
+loadRestartState :: IO Restored
 loadRestartState = do
   path <- restartStateFile
   r <- E.try (readFile path >>= \s -> length s `seq` pure s) :: IO (Either E.IOException String)
   _ <- E.try (removeFile path) :: IO (Either E.IOException ())
   pure $ case r of
     Right s | [(saved, "")] <- reads s ->
-      let (cur, es) = saved :: SavedState
-      in (Just cur, M.fromList [ (ident, (t, mr)) | (ident, t, mr) <- es ])
-    _ -> (Nothing, M.empty)
+      let (cur, es, ls, xs) = saved :: SavedState
+      in Restored (Just cur) (M.fromList [ (ident, (t, mr)) | (ident, t, mr, _, _) <- es ])
+                  (M.fromList [ (ident, (p, f)) | (ident, _, _, p, f) <- es ]) ls xs
+    _ -> Restored Nothing M.empty M.empty [] []
+
+-- | Re-apply saved layouts (parsed with the configured layout as template;
+-- if the configuration changed and they no longer parse, keep the default).
+applyRestoredLayouts :: Layout Window -> [(WorkspaceId, String)] -> WindowSet -> WindowSet
+applyRestoredLayouts template saved = W.mapWorkspace $ \wsp ->
+  case lookup (W.tag wsp) saved >>= parse of
+    Just l -> wsp { W.layout = l }
+    Nothing -> wsp
+  where
+    parse str = case readsLayout template str of
+      [(l, rest)] | all (== ' ') rest -> Just l
+      _ -> Nothing

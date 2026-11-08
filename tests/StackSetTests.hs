@@ -31,10 +31,11 @@ main = do
       s4 = W.greedyView "3" s3
       s5 = W.delete 3 (W.float 3 (W.RationalRect 0 0 1 1) s1)
       tiles = tile (1 / 2) (Rectangle 0 0 1000 800) 1 3
-      full = runLayout (Layout (Tall 1 (3 / 100) (1 / 2) ||| Full)) (Rectangle 0 0 100 100)
+      full = maybe [] (pureLayout (Tall 1 (3 / 100) (1 / 2) :: Tall Int) (Rectangle 0 0 100 100))
                        (W.differentiate [1, 2, 3 :: Int])
-      next = handleMessage (Layout (Tall 1 (3 / 100) (1 / 2) ||| Full)) (SomeMessage NextLayout)
-      wrap = next >>= \l -> handleMessage l (SomeMessage NextLayout)
+      shrunk = pureMessage (Tall 1 (1 / 10) (1 / 2) :: Tall Int) (SomeMessage Shrink)
+      mirrored = maybe [] (pureLayout (Tall 1 (3 / 100) (1 / 2) :: Tall Int) (Rectangle 0 0 100 100))
+                       (W.differentiate [1, 2 :: Int])
   rs <- sequence
     [ check "insertUp focuses the new window" (W.peek s1 == Just 1)
     , check "insertUp keeps windows unique" (invariant s1 && length (W.index s1) == 5)
@@ -46,9 +47,15 @@ main = do
     , check "swapMaster puts focus first" (let s = W.swapMaster (W.focusDown s1) in take 1 (W.index s) == maybe [] pure (W.peek s))
     , check "delete removes window and float" (not (W.member 3 s5) && M.notMember 3 (W.floating s5))
     , check "tile: master takes half" (map rect_width tiles == [500, 500, 500] && map rect_height tiles == [800, 400, 400])
-    , check "Full under Choose starts as Tall" (length full == 3)
-    , check "NextLayout switches to Full" (fmap description next == Just "Full")
-    , check "NextLayout wraps around" (fmap description wrap == Just "Tall")
+    , check "Tall places every window" (length full == 3)
+    , check "Shrink reduces the master ratio" (fmap tallRatio shrunk == Just (2 / 5))
+    , check "Tall splits two windows side by side" (map (rect_x . snd) mirrored == [0, 50])
+    , check "layouts round-trip through Read" (fmap show (readsTall (show (Tall 2 (1 / 10) (1 / 3) :: Tall Int))) == Just (show (Tall 2 (1 / 10) (1 / 3) :: Tall Int)))
     , check "mirrorRect is an involution" (mirrorRect (mirrorRect (Rectangle 1 2 3 4)) == Rectangle 1 2 3 4)
     ]
   unless (and rs) exitFailure
+  where
+    readsTall :: String -> Maybe (Tall Int)
+    readsTall str = case reads str of
+      [(x, "")] -> Just x
+      _ -> Nothing

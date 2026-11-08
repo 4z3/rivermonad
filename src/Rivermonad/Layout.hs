@@ -1,26 +1,23 @@
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE UndecidableInstances #-}
--- | Layouts and layout messages, modelled after @XMonad.Layout@ /
--- @XMonad.Core.LayoutClass@ but pure: a layout maps a rectangle and a stack
--- of windows to window rectangles.
+-- | The standard layouts and messages, as in @XMonad.Layout@.
 module Rivermonad.Layout
-  ( Rectangle (..)
+  ( -- * Re-exported from the core
+    Rectangle (..)
   , LayoutClass (..)
   , Layout (..)
-  , runLayout
-  , handleMessage
-    -- * Messages
   , Message
   , SomeMessage (..)
   , fromMessage
+    -- * Messages
   , Resize (..)
   , IncMasterN (..)
   , ChangeLayout (..)
   , JumpToLayout (..)
+  , sendLayoutMessage
     -- * Layouts
   , Tall (..)
   , Full (..)
@@ -30,29 +27,13 @@ module Rivermonad.Layout
   , tile
   , splitVertically
   , splitHorizontallyBy
+  , splitHorizontally
   , mirrorRect
   ) where
 
 import Control.Monad (msum)
-import Data.Typeable (Typeable, cast)
-import Rivermonad.StackSet (Stack (..), integrate)
-
-data Rectangle = Rectangle
-  { rect_x      :: !Int
-  , rect_y      :: !Int
-  , rect_width  :: !Int
-  , rect_height :: !Int
-  } deriving (Show, Read, Eq, Ord)
-
-------------------------------------------------------------------------------
--- Messages
-
-class Typeable a => Message a
-
-data SomeMessage = forall a. Message a => SomeMessage a
-
-fromMessage :: Message m => SomeMessage -> Maybe m
-fromMessage (SomeMessage m) = cast m
+import Rivermonad.Core
+import Rivermonad.StackSet (Workspace (..), integrate)
 
 -- | Change the master area size.
 data Resize = Shrink | Expand deriving (Show, Eq)
@@ -70,43 +51,14 @@ instance Message ChangeLayout
 newtype JumpToLayout = JumpToLayout String deriving (Show, Eq)
 instance Message JumpToLayout
 
-------------------------------------------------------------------------------
--- Layout class
-
-class Show (l a) => LayoutClass l a where
-  -- | Place the windows of a non-empty stack inside the given rectangle.
-  pureLayout :: l a -> Rectangle -> Stack a -> [(a, Rectangle)]
-  pureLayout _ r s = [(focus s, r)]
-
-  -- | React to a message. 'Nothing' means the layout ignored it.
-  pureMessage :: l a -> SomeMessage -> Maybe (l a)
-  pureMessage _ _ = Nothing
-
-  -- | Human readable name, used by 'JumpToLayout' and status bars.
-  description :: l a -> String
-  description = takeWhile (/= ' ') . show
-
--- | A layout of unknown type.
-data Layout a = forall l. LayoutClass l a => Layout (l a)
-
-instance Show (Layout a) where
-  show (Layout l) = show l
-
-instance LayoutClass Layout a where
-  pureLayout (Layout l) = pureLayout l
-  pureMessage (Layout l) m = Layout <$> pureMessage l m
-  description (Layout l) = description l
-
-runLayout :: Layout a -> Rectangle -> Maybe (Stack a) -> [(a, Rectangle)]
-runLayout _ _ Nothing = []
-runLayout l r (Just s) = pureLayout l r s
-
--- | Deliver a message; a top-level 'NextLayout' that falls off the end of
--- the '|||' chain wraps around to the first layout.
-handleMessage :: Layout a -> SomeMessage -> Maybe (Layout a)
-handleMessage l m = case pureMessage l m of
-  Nothing | Just NextLayout <- fromMessage m -> pureMessage l (SomeMessage FirstLayout)
-  r -> r
+-- | Deliver a message to a top-level layout; a 'NextLayout' that falls off
+-- the end of the '|||' chain wraps around to the first layout.
+sendLayoutMessage :: Layout a -> SomeMessage -> X (Maybe (Layout a))
+sendLayoutMessage l m = do
+  r <- handleMessage l m
+  case r of
+    Nothing | Just NextLayout <- fromMessage m -> handleMessage l (SomeMessage FirstLayout)
+    _ -> pure r
 
 ------------------------------------------------------------------------------
 -- Full
@@ -147,6 +99,9 @@ splitVertically n (Rectangle sx sy sw sh) =
   Rectangle sx sy sw smallh : splitVertically (n - 1) (Rectangle sx (sy + smallh) sw (sh - smallh))
   where smallh = sh `div` n
 
+splitHorizontally :: Int -> Rectangle -> [Rectangle]
+splitHorizontally n = map mirrorRect . splitVertically n . mirrorRect
+
 splitHorizontallyBy :: Rational -> Rectangle -> (Rectangle, Rectangle)
 splitHorizontallyBy f (Rectangle sx sy sw sh) =
   (Rectangle sx sy leftw sh, Rectangle (sx + leftw) sy (sw - leftw) sh)
@@ -159,10 +114,13 @@ splitHorizontallyBy f (Rectangle sx sy sw sh) =
 newtype Mirror l a = Mirror (l a)
 
 deriving instance Show (l a) => Show (Mirror l a)
+deriving instance Read (l a) => Read (Mirror l a)
 
 instance LayoutClass l a => LayoutClass (Mirror l) a where
-  pureLayout (Mirror l) r s = [ (w, mirrorRect wr) | (w, wr) <- pureLayout l (mirrorRect r) s ]
-  pureMessage (Mirror l) m = Mirror <$> pureMessage l m
+  runLayout (Workspace i (Mirror l) ms) r = do
+    (wrs, ml') <- runLayout (Workspace i l ms) (mirrorRect r)
+    pure ([ (w, mirrorRect wr) | (w, wr) <- wrs ], Mirror <$> ml')
+  handleMessage (Mirror l) m = fmap Mirror <$> handleMessage l m
   description (Mirror l) = "Mirror " ++ description l
 
 mirrorRect :: Rectangle -> Rectangle
@@ -177,36 +135,43 @@ data LR = L | R deriving (Show, Read, Eq)
 data Choose l r a = Choose LR (l a) (r a)
 
 deriving instance (Show (l a), Show (r a)) => Show (Choose l r a)
+deriving instance (Read (l a), Read (r a)) => Read (Choose l r a)
 
 infixr 5 |||
 (|||) :: l a -> r a -> Choose l r a
 (|||) = Choose L
 
 instance (LayoutClass l a, LayoutClass r a) => LayoutClass (Choose l r) a where
-  pureLayout (Choose L l _) = pureLayout l
-  pureLayout (Choose R _ r) = pureLayout r
+  runLayout (Workspace i (Choose L l r) ms) rect = do
+    (wrs, ml') <- runLayout (Workspace i l ms) rect
+    pure (wrs, (\l' -> Choose L l' r) <$> ml')
+  runLayout (Workspace i (Choose R l r) ms) rect = do
+    (wrs, mr') <- runLayout (Workspace i r ms) rect
+    pure (wrs, Choose R l <$> mr')
 
   description (Choose L l _) = description l
   description (Choose R _ r) = description r
 
-  pureMessage (Choose d l r) m
+  handleMessage (Choose d l r) m
     | Just NextLayout <- fromMessage m = case d of
         -- Let a nested Choose advance first; when it runs out, move right.
-        L -> case pureMessage l m of
-          Just l' -> Just (Choose L l' r)
-          Nothing -> Just (Choose R l (reset r))
-        R -> Choose R l <$> pureMessage r m
-    | Just FirstLayout <- fromMessage m = Just (Choose L (reset l) r)
-    | Just (JumpToLayout n) <- fromMessage m =
-        case (jump n l, jump n r) of
-          (Just l', _) -> Just (Choose L l' r)
-          (_, Just r') -> Just (Choose R l r')
-          _            -> Nothing
+        L -> handleMessage l m >>= \case
+          Just l' -> pure (Just (Choose L l' r))
+          Nothing -> Just . Choose R l <$> reset r
+        R -> fmap (Choose R l) <$> handleMessage r m
+    | Just FirstLayout <- fromMessage m = do
+        l' <- reset l
+        pure (Just (Choose L l' r))
+    | Just (JumpToLayout n) <- fromMessage m = do
+        jl <- jump n l
+        case jl of
+          Just l' -> pure (Just (Choose L l' r))
+          Nothing -> fmap (Choose R l) <$> jump n r
     | otherwise = case d of
-        L -> (\l' -> Choose L l' r) <$> pureMessage l m
-        R -> Choose R l <$> pureMessage r m
+        L -> fmap (\l' -> Choose L l' r) <$> handleMessage l m
+        R -> fmap (Choose R l) <$> handleMessage r m
     where
-      reset x = maybe x id (pureMessage x (SomeMessage FirstLayout))
+      reset x = maybe x id <$> handleMessage x (SomeMessage FirstLayout)
       jump n x
-        | description x == n = Just x
-        | otherwise          = pureMessage x (SomeMessage (JumpToLayout n))
+        | description x == n = pure (Just x)
+        | otherwise = handleMessage x (SomeMessage (JumpToLayout n))

@@ -29,6 +29,7 @@ defaultConfig = XConfig
   , workspaces = map show [1 .. 9 :: Int]
   , layoutHook = defaultLayout
   , manageHook = idHook
+  , handleEventHook = const (pure (All True))
   , keys = defaultKeys
   , mouseBindings = defaultMouseBindings
   , startupHook = pure ()

@@ -1,20 +1,29 @@
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
--- | Core types: the 'X' monad, configuration and runtime state.
+-- | Core types: the 'X' monad, layouts, configuration and runtime state.
+--
+-- As in xmonad, the layout class lives here because layouts run in 'X'.
 module Rivermonad.Core
   ( -- * Basic types
-    Window, WorkspaceId, ScreenId (..), ScreenDetail (..), WindowSet
+    Window, WorkspaceId, ScreenId (..), ScreenDetail (..), WindowSet, WindowSpace
+  , Rectangle (..)
   , WindowInfo (..), OutputInfo (..), SeatInfo (..), Drag (..), DragKind (..)
   , Globals (..), Input (..), RestartNow (..)
+    -- * Layouts
+  , LayoutClass (..), Layout (..), readsLayout
+  , Message, SomeMessage (..), fromMessage
+    -- * Extensible state
+  , ExtensionClass (..), StateExtension (..)
     -- * Configuration
   , XConfig (..), Default (..)
     -- * The X monad
-  , X, XConf (..), XState (..), runX, io, catchX, userCode, userCodeDef
+  , X, XConf (..), XState (..), RationalRectS, runX, io, catchX, userCode, userCodeDef
   , withWindowSet, gets, modify, asks, ask, get, put
     -- * Queries / ManageHook
   , Query (..), ManageHook, runQuery, liftX
     -- * Helpers
-  , screenRect, emptyWindowInfo
+  , screenRect, emptyWindowInfo, All (..)
   ) where
 
 import Control.Concurrent.Chan (Chan)
@@ -22,14 +31,15 @@ import qualified Control.Exception as E
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
-import Data.Monoid (Endo (..))
+import Data.Monoid (All (..), Endo (..))
 import qualified Data.Set as S
+import Data.Typeable (Typeable, cast)
 import System.Exit (ExitCode)
 import System.IO (hPutStrLn, stderr)
 
 import Rivermonad.Keysym
-import Rivermonad.Layout
-import Rivermonad.StackSet (StackSet)
+import qualified Rivermonad.StackSet as W
+import Rivermonad.StackSet (StackSet, Stack (..))
 import Rivermonad.Wayland.Protocol (Event)
 import Rivermonad.Wayland.Wire (Conn, ObjectId)
 
@@ -40,15 +50,93 @@ type WorkspaceId = String
 newtype ScreenId = S Int
   deriving (Eq, Ord, Show, Read, Enum, Num, Integral, Real)
 
+data Rectangle = Rectangle
+  { rect_x      :: !Int
+  , rect_y      :: !Int
+  , rect_width  :: !Int
+  , rect_height :: !Int
+  } deriving (Show, Read, Eq, Ord)
+
 data ScreenDetail = SD
   { sdOutput :: !ObjectId   -- ^ the river_output_v1 behind this screen
   , sdRect   :: !Rectangle  -- ^ area available to windows (bars excluded)
   } deriving (Eq, Show)
 
 type WindowSet = StackSet WorkspaceId (Layout Window) Window ScreenId ScreenDetail
+type WindowSpace = W.Workspace WorkspaceId (Layout Window) Window
 
 screenRect :: ScreenDetail -> Rectangle
 screenRect = sdRect
+
+------------------------------------------------------------------------------
+-- Messages and layouts
+
+class Typeable a => Message a
+
+data SomeMessage = forall a. Message a => SomeMessage a
+
+fromMessage :: Message m => SomeMessage -> Maybe m
+fromMessage (SomeMessage m) = cast m
+
+-- | The layout class, as in xmonad. Implement 'pureLayout' / 'pureMessage'
+-- for simple layouts, or 'doLayout' / 'handleMessage' when you need 'X'.
+class Show (layout a) => LayoutClass layout a where
+  -- | Lay out a whole workspace. Rarely overridden.
+  runLayout :: W.Workspace WorkspaceId (layout a) a -> Rectangle -> X ([(a, Rectangle)], Maybe (layout a))
+  runLayout (W.Workspace _ l ms) r = maybe (emptyLayout l r) (doLayout l r) ms
+
+  doLayout :: layout a -> Rectangle -> Stack a -> X ([(a, Rectangle)], Maybe (layout a))
+  doLayout l r s = pure (pureLayout l r s, Nothing)
+
+  pureLayout :: layout a -> Rectangle -> Stack a -> [(a, Rectangle)]
+  pureLayout _ r s = [(W.focus s, r)]
+
+  emptyLayout :: layout a -> Rectangle -> X ([(a, Rectangle)], Maybe (layout a))
+  emptyLayout _ _ = pure ([], Nothing)
+
+  -- | React to a message. 'Nothing' means the layout did not change.
+  handleMessage :: layout a -> SomeMessage -> X (Maybe (layout a))
+  handleMessage l = pure . pureMessage l
+
+  pureMessage :: layout a -> SomeMessage -> Maybe (layout a)
+  pureMessage _ _ = Nothing
+
+  -- | Human readable name, used by 'JumpToLayout' and status bars.
+  description :: layout a -> String
+  description = takeWhile (/= ' ') . show
+
+-- | A layout of unknown type. 'Read' is required so layouts survive restarts.
+data Layout a = forall l. (LayoutClass l a, Read (l a)) => Layout (l a)
+
+instance Show (Layout a) where
+  show (Layout l) = show l
+
+instance LayoutClass Layout a where
+  runLayout (W.Workspace i (Layout l) ms) r = fmap (fmap Layout) <$> runLayout (W.Workspace i l ms) r
+  doLayout (Layout l) r s = fmap (fmap Layout) <$> doLayout l r s
+  emptyLayout (Layout l) r = fmap (fmap Layout) <$> emptyLayout l r
+  handleMessage (Layout l) m = fmap Layout <$> handleMessage l m
+  description (Layout l) = description l
+
+-- | Parse a layout using another layout of the same type as a template.
+readsLayout :: Layout a -> String -> [(Layout a, String)]
+readsLayout (Layout l) s = [ (Layout (x `asTypeOf` l), rest) | (x, rest) <- reads s ]
+
+------------------------------------------------------------------------------
+-- Extensible state (see Rivermonad.Util.ExtensibleState)
+
+class Typeable a => ExtensionClass a where
+  initialValue :: a
+  -- | Use 'PersistentExtension' to keep the value across restarts.
+  extensionType :: a -> StateExtension
+  extensionType = StateExtension
+
+data StateExtension
+  = forall a. ExtensionClass a => StateExtension a
+  | forall a. (Read a, Show a, ExtensionClass a) => PersistentExtension a
+
+------------------------------------------------------------------------------
+-- Per-window state
 
 -- | Everything we know about a window from the compositor.
 data WindowInfo = WindowInfo
@@ -137,6 +225,7 @@ data XConfig = XConfig
   , workspaces         :: ![WorkspaceId]
   , layoutHook         :: !(Layout Window)
   , manageHook         :: !ManageHook
+  , handleEventHook    :: !(Event -> X All)   -- ^ return @All False@ to skip default handling
   , keys               :: !(XConfig -> M.Map (KeyMask, KeySym) (X ()))
   , mouseBindings      :: !(XConfig -> M.Map (KeyMask, Button) (Window -> X ()))
   , startupHook        :: !(X ())
@@ -156,24 +245,27 @@ data XConf = XConf
   }
 
 data XState = XState
-  { windowset      :: !WindowSet
-  , windowInfo     :: !(M.Map Window WindowInfo)
-  , outputs        :: !(M.Map ObjectId OutputInfo)
-  , seats          :: !(M.Map ObjectId SeatInfo)
-  , keyActions     :: !(M.Map ObjectId (X ()))
-  , pointerActions :: !(M.Map ObjectId (ObjectId, Window -> X ())) -- ^ binding -> (seat, action)
-  , pending        :: ![X ()]          -- ^ actions for the next manage sequence (newest first)
-  , newWindows     :: ![Window]        -- ^ windows awaiting the manage hook (newest first)
-  , outputsDirty   :: !Bool
-  , haveScreens    :: !Bool
-  , fullscreen     :: !(S.Set Window)
-  , needsCenter    :: !(S.Set Window)  -- ^ floats to center once their size is known
-  , drag           :: !(Maybe Drag)
-  , sessionLocked  :: !Bool
-  , started        :: !Bool            -- ^ startup hook already ran
-  , restoreState   :: !(M.Map String (WorkspaceId, Maybe RationalRectS))
-  , restarting     :: !Bool
-  , restoreView    :: !(Maybe WorkspaceId) -- ^ workspace to show after a restart
+  { windowset       :: !WindowSet
+  , windowInfo      :: !(M.Map Window WindowInfo)
+  , outputs         :: !(M.Map ObjectId OutputInfo)
+  , seats           :: !(M.Map ObjectId SeatInfo)
+  , keyActions      :: !(M.Map ObjectId (X ()))
+  , pointerActions  :: !(M.Map ObjectId (ObjectId, Window -> X ())) -- ^ binding -> (seat, action)
+  , pending         :: ![X ()]          -- ^ actions for the next manage sequence (newest first)
+  , newWindows      :: ![Window]        -- ^ windows awaiting the manage hook (newest first)
+  , outputsDirty    :: !Bool
+  , haveScreens     :: !Bool
+  , fullscreen      :: !(S.Set Window)
+  , needsCenter     :: !(S.Set Window)  -- ^ floats to center once their size is known
+  , drag            :: !(Maybe Drag)
+  , sessionLocked   :: !Bool
+  , started         :: !Bool            -- ^ startup hook already ran
+  , restoreState    :: !(M.Map String (WorkspaceId, Maybe RationalRectS))
+  , restarting      :: !Bool
+  , restoreView     :: !(Maybe WorkspaceId) -- ^ workspace to show after a restart
+  , restoreOrder    :: !(M.Map String (Int, Bool)) -- ^ identifier -> (stack position, focused)
+  , borderWidths    :: !(M.Map Window Int)  -- ^ per-window border overrides set by layouts
+  , extensibleState :: !(M.Map String (Either String StateExtension))
   }
 
 -- | Serializable float geometry used by the restart state file.
@@ -195,7 +287,7 @@ io :: MonadIO m => IO a -> m a
 io = liftIO
 
 -- | Run an action, falling back to another one (and discarding state
--- changes) if it throws. 'ExitCode' exceptions are re-thrown.
+-- changes) if it throws. 'ExitCode' and restart exceptions are re-thrown.
 catchX :: X a -> X a -> X a
 catchX job errcase = do
   st <- get

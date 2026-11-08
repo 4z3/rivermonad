@@ -4,7 +4,7 @@ module Rivermonad.Operations
   ( windows, refresh, withFocused, focus
   , kill, killWindow
   , spawn
-  , sendMessage, setLayout
+  , sendMessage, broadcastMessage, setLayout, setLayoutOf
   , float, sinkWindow, windowGeometry, setFloatGeometry, screenOfWindow
   , toggleFullscreen
   , mouseMoveWindow, mouseResizeWindow, startDrag, endDrag, updateDrag
@@ -76,14 +76,24 @@ spawn cmd = io $ void $ E.try @E.SomeException $ do
 sendMessage :: Message a => a -> X ()
 sendMessage a = do
   ws <- gets windowset
-  case handleMessage (W.layout (W.workspace (W.current ws))) (SomeMessage a) of
-    Nothing -> pure ()
-    Just l' -> setLayout l'
+  let wsp = W.workspace (W.current ws)
+  r <- sendLayoutMessage (W.layout wsp) (SomeMessage a)
+  mapM_ (setLayoutOf (W.tag wsp)) r
+
+-- | Send a message to the layouts of every workspace.
+broadcastMessage :: Message a => a -> X ()
+broadcastMessage a = do
+  wss <- gets (W.workspaces . windowset)
+  mapM_ (\wsp -> handleMessage (W.layout wsp) (SomeMessage a) >>= mapM_ (setLayoutOf (W.tag wsp))) wss
 
 setLayout :: Layout Window -> X ()
-setLayout l = windows $ \s ->
-  s { W.current = (W.current s)
-      { W.workspace = (W.workspace (W.current s)) { W.layout = l } } }
+setLayout l = do
+  t <- gets (W.currentTag . windowset)
+  setLayoutOf t l
+
+-- | Replace the layout of a given workspace.
+setLayoutOf :: WorkspaceId -> Layout Window -> X ()
+setLayoutOf t l = windows $ W.mapWorkspace (\wsp -> if W.tag wsp == t then wsp { W.layout = l } else wsp)
 
 ------------------------------------------------------------------------------
 -- Geometry helpers
