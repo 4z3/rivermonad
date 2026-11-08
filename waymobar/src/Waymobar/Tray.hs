@@ -45,6 +45,7 @@ data Item = Item
   , itOrder   :: Int
   , itStatus  :: String
   , itIcon    :: Maybe Icon
+  , itIconSource :: Maybe IconSource  -- ^ theme icon, rasterized at the real size when drawn
   , itTitle   :: String
   , itMenu    :: Maybe String
   , itIsMenu  :: Bool
@@ -90,6 +91,8 @@ tray cfg = Widget $ \env -> do
     pure
       [ (block "")
           { blockIcon = Just icon
+          , blockIconSource = itIconSource it
+          , blockIconColor = Just (traySymbolicColor cfg)
           , blockIconSize = trayIconSize cfg
           , blockPadding = trayPadding cfg
           , blockOnClick = (\(bus, st) -> clickItem bus st it) <$> mb }
@@ -233,7 +236,7 @@ addItem bus st n service path = do
         _ -> service
   let key = service ++ path
   modifyIORef' (tsItems st) $ M.insertWith (\_ old -> old) key
-    (Item service path owner n "Active" Nothing "" Nothing False)
+    (Item service path owner n "Active" Nothing Nothing "" Nothing False)
   refresh bus st service path
 
 -- | A themed icon, recoloured if it is a symbolic one.
@@ -275,6 +278,7 @@ refresh bus st service path = do
       modifyIORef' (tsItems st) $ M.adjust (\it -> it
         { itStatus = if null status then "Active" else status
         , itIcon = icon
+        , itIconSource = if isJust fromTheme then Just (IconName themePath name) else Nothing
         , itTitle = str "Title"
         , itMenu = menu
         , itIsMenu = fromMaybe False (dictLookup "ItemIsMenu" d >>= valueBool)

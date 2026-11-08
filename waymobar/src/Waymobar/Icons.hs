@@ -8,6 +8,7 @@ module Waymobar.Icons
   , recolorIcon
   , lookupIcon
   , findIcon
+  , resolveIcon
   , defaultIconThemes
   ) where
 
@@ -35,6 +36,7 @@ import System.FilePath
 import System.IO.Unsafe (unsafePerformIO)
 import System.Process (readProcessWithExitCode)
 
+import Waymobar.Core (IconSource (..))
 import Waymobar.Draw (Icon (..))
 
 foreign import ccall safe "waymobar_load_icon"
@@ -228,3 +230,48 @@ themeChain themes = (++ ["hicolor"]) . filter (/= "hicolor") . nub <$> go themes
       (a, _ : r) -> trim a : splitComma r
       (a, []) -> [trim a | not (null (trim a))]
     trim = reverse . dropWhile (== ' ') . reverse . dropWhile (== ' ')
+
+------------------------------------------------------------------------------
+-- Icons rasterized for drawing
+
+type IconKey = (IconSource, Int, Maybe (Double, Double, Double), Bool)
+
+iconCache :: MVar (M.Map IconKey (Maybe Icon))
+iconCache = unsafePerformIO (newMVar M.empty)
+{-# NOINLINE iconCache #-}
+
+themesCache :: MVar (Maybe [String])
+themesCache = unsafePerformIO (newMVar Nothing)
+{-# NOINLINE themesCache #-}
+
+-- | An icon rasterized at exactly @px@ device pixels (cached). Symbolic
+-- theme icons are recoloured to @colour@; with @recolorAll@ every icon is.
+resolveIcon :: IconSource -> Int -> Maybe (Double, Double, Double) -> Bool -> IO (Maybe Icon)
+resolveIcon src px colour recolorAll = do
+  let key = (src, px, colour, recolorAll)
+  hit <- M.lookup key <$> readMVar iconCache
+  case hit of
+    Just r -> pure r
+    Nothing -> do
+      r <- load `E.catch` \(_ :: E.SomeException) -> pure Nothing
+      -- Sizes change with the output scale; keep the cache from growing forever.
+      modifyMVar_ iconCache $ \m -> pure (M.insert key r (if M.size m > 512 then M.empty else m))
+      pure r
+  where
+    forAll i = case colour of
+      Just c | recolorAll -> recolorIcon c i
+      _ -> i
+    load = case src of
+      IconFile p -> do
+        path <- expandHome p
+        fmap forAll <$> loadIconFile path px
+      IconName dirs name -> do
+        themes <- modifyMVar themesCache $ \case
+          Just ts -> pure (Just ts, ts)
+          Nothing -> do
+            ts <- defaultIconThemes
+            pure (Just ts, ts)
+        fmap forAll <$> lookupIcon (if recolorAll then Nothing else colour) dirs themes name px
+    expandHome p = case stripPrefix "~/" p of
+      Just rest -> (</> rest) <$> getHomeDirectory
+      Nothing -> pure p

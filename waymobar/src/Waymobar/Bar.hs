@@ -36,6 +36,7 @@ import System.Posix.Types (Fd (..))
 
 import Waymobar.Core
 import Waymobar.Draw
+import Waymobar.Icons (resolveIcon)
 import qualified Waymobar.Rivermonad as R
 import Waymobar.Wayland.Protocol
 import Waymobar.Wayland.Wire
@@ -495,18 +496,29 @@ paintBar :: Env -> Canvas -> Output -> Double -> Double -> IO [(Double, Double, 
 paintBar env cv out w h = do
   let cfg = eCfg env
       (ls, cs, rs) = eWidgets env
-      visible b = not (null (blockMarkup b)) || isJust (blockIcon b)
+      hasIcon b = isJust (blockIcon b) || isJust (blockIconSource b)
+      visible b = not (null (blockMarkup b)) || hasIcon b
       -- widgets with nothing to show take no room (nor spacing)
       blocksOf = fmap (filter (not . null)) . mapM (\f -> filter visible <$> safe (f out))
   clear cv (color (bgColor cfg))
+  devScale <- canvasScale cv
+  let -- Icons with a source are rasterized at the real (device) size, so
+      -- SVGs stay sharp at any output scale; the bitmap is a fallback.
+      blockBitmap b isz = case blockIconSource b of
+        Nothing -> pure (blockIcon b)
+        Just src -> do
+          let px = max 1 (round (isz * devScale))
+              Color r g bl _ = color (fromMaybe (fromMaybe (fgColor cfg) (styleFg (blockStyle b))) (blockIconColor b))
+          ic <- resolveIcon src px (Just (r, g, bl)) (blockIconRecolorAll b)
+          pure (maybe (blockIcon b) Just ic)
   lb <- blocksOf ls
   cb <- blocksOf cs
   rb <- blocksOf rs
   withFont (font cfg) $ \fnt -> do
     let iconSize b = fromIntegral (if blockIconSize b > 0 then blockIconSize b else max 8 (round h - 8))
-        iconPart b = case blockIcon b of
-          Nothing -> 0
-          Just _ -> iconSize b + (if null (blockMarkup b) then 0 else 4)
+        iconPart b
+          | hasIcon b = iconSize b + (if null (blockMarkup b) then 0 else 4)
+          | otherwise = 0
         measure bss k = withLayouts cv fnt (map blockMarkup (concat bss)) $ \lays -> do
           ws <- forM (zip (concat bss) lays) $ \(b, l) -> do
             (tw, th) <- layoutSize l
@@ -519,7 +531,8 @@ paintBar env cv out w h = do
         totalWidth gs = sum (map groupWidth gs) + sp * fromIntegral (max 0 (length gs - 1))
         drawGroups x0 gs = fmap concat $ forM (zip (scanl (\x g -> x + groupWidth g + sp) x0 gs) gs) $ \(gx, g) ->
           fmap concat $ forM (zip (scanl (+) gx [ bw | (_, _, (bw, _)) <- g ]) g) $ \(x, (b, l, (bw, th))) -> do
-            drawBlock cfg cv b l x bw h th (iconSize b)
+            ic <- blockBitmap b (iconSize b)
+            drawBlock cfg cv b { blockIcon = ic } l x bw h th (iconSize b)
             pure [ (x, x + bw, f) | Just f <- [blockOnClick b] ]
     measure lb $ \lgs -> measure cb $ \cgs -> measure rb $ \rgs -> do
       let lw = totalWidth lgs

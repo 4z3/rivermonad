@@ -16,6 +16,7 @@ module Waymobar.Core
   , MenuEntry (..)
   , menuItem
   , Icon
+  , IconSource (..)
   , Style (..)
   , noStyle
   , styled
@@ -115,21 +116,31 @@ data Style = Style
 noStyle :: Style
 noStyle = Style Nothing Nothing Nothing Nothing
 
+-- | Where an icon comes from. It is rasterized when the bar is drawn, at
+-- the output's real pixel size, so SVGs stay sharp at any scale.
+data IconSource
+  = IconFile FilePath            -- ^ an image file: SVG, PNG... (@~/@ is expanded)
+  | IconName [FilePath] String   -- ^ a freedesktop icon theme name, extra directories searched first
+  deriving (Eq, Ord, Show)
+
 -- | One rectangle of a bar: an optional icon followed by some pango markup,
 -- with colours and an optional click handler.
 data Block = Block
-  { blockMarkup   :: String
-  , blockStyle    :: Style
-  , blockPadding  :: Int     -- ^ pixels at each side
-  , blockMinWidth :: Int
-  , blockOnClick  :: Maybe (Click -> IO ())
-  , blockIcon     :: Maybe Icon
-  , blockIconSize :: Int     -- ^ logical pixels; 0 = the bar height minus 8
+  { blockMarkup         :: String
+  , blockStyle          :: Style
+  , blockPadding        :: Int     -- ^ pixels at each side
+  , blockMinWidth       :: Int
+  , blockOnClick        :: Maybe (Click -> IO ())
+  , blockIcon           :: Maybe Icon        -- ^ a ready-made bitmap (fallback for 'blockIconSource')
+  , blockIconSize       :: Int     -- ^ logical pixels; 0 = the bar height minus 8
+  , blockIconSource     :: Maybe IconSource  -- ^ preferred over 'blockIcon' when it loads
+  , blockIconColor      :: Maybe String      -- ^ colour for symbolic icons; 'Nothing' = the text colour
+  , blockIconRecolorAll :: Bool              -- ^ recolour every icon, not only @-symbolic@ ones
   }
 
 -- | A block showing some markup, without padding or click handler.
 block :: String -> Block
-block m = Block m noStyle 0 0 Nothing Nothing 0
+block m = Block m noStyle 0 0 Nothing Nothing 0 Nothing Nothing False
 
 styled :: Style -> Block -> Block
 styled s b = b { blockStyle = s }

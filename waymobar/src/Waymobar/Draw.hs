@@ -20,6 +20,7 @@ module Waymobar.Draw
     -- * Images
   , Icon (..)
   , drawIcon
+  , canvasScale
   ) where
 
 import Control.Exception (bracket)
@@ -33,7 +34,7 @@ import Foreign.C.String (CString)
 import Foreign.C.Types (CDouble (..), CInt (..))
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Ptr (Ptr, nullPtr)
-import Foreign.Storable (peek)
+import Foreign.Storable (peek, poke)
 import Data.Word (Word8)
 
 data CairoSurface
@@ -48,6 +49,8 @@ newtype Font = Font (Ptr PangoFontDescription)
 
 newtype TextLayout = TextLayout (Ptr PangoLayout)
 
+foreign import ccall unsafe "cairo_user_to_device_distance"
+  c_user_to_device_distance :: Ptr Cairo -> Ptr CDouble -> Ptr CDouble -> IO ()
 foreign import ccall unsafe "cairo_image_surface_create_for_data"
   c_surface_for_data :: Ptr Word8 -> CInt -> CInt -> CInt -> CInt -> IO (Ptr CairoSurface)
 foreign import ccall unsafe "cairo_surface_destroy"
@@ -227,3 +230,11 @@ drawIcon (Canvas cr) (Icon w h px) x y size
         c_pattern_set_filter pat 1 -- CAIRO_FILTER_GOOD
         c_paint cr
         c_restore cr
+
+-- | Device pixels per logical pixel of this canvas (the output scale).
+canvasScale :: Canvas -> IO Double
+canvasScale (Canvas cr) = alloca $ \px -> alloca $ \py -> do
+  poke px 1
+  poke py 0
+  c_user_to_device_distance cr px py
+  realToFrac <$> peek px

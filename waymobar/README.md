@@ -103,6 +103,32 @@ Combinators: `colored "#hex"`, `withStyle`, `padded n`, `markup f`,
 `onClick (\c -> ...)`, `spawnOnClick "cmd"`. Text is pango markup; use
 `escape` for untrusted strings.
 
+### Icons
+
+Two kinds, both sharp at any output scale:
+
+* **Icon fonts.** Text is drawn with pango, so any glyph of an installed
+  font works in any widget: emoji (`"🔊 "`) or [Nerd Fonts](https://www.nerdfonts.com)
+  symbols (`"\xf028 "`). With the "Symbols Nerd Font" installed (the
+  symbols-only package) fontconfig picks the glyphs from it automatically,
+  whatever your text font is. They take the text colour.
+* **Images.** SVG, PNG… files or freedesktop theme icons, rasterized when
+  the bar is drawn at the output's real pixel size (cached), so an SVG is
+  not blurred on HiDPI outputs. SVG needs gdk-pixbuf's loader
+  (`librsvg2-common` on Debian/Ubuntu).
+
+| | |
+|---|---|
+| `icon "name-or-path"` | just an icon |
+| `withIcon "name-or-path" w` | an icon before the widget's text |
+| `iconColor "#hex" w` | recolour all its icons (monochrome SVGs) |
+| `withIconSize px w` | icon size in logical pixels (default: bar height − 8) |
+
+A path (anything with a `/`, `~/...`, or an image extension) is a file;
+anything else is looked up in the icon theme, e.g.
+`withIcon "audio-volume-high-symbolic" volume`. `-symbolic` icons take
+the text colour. Tray icons from the theme use the same mechanism.
+
 ### System tray
 
 `tray defaultTray` shows StatusNotifierItem icons. Left click activates the

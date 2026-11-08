@@ -19,6 +19,12 @@ module Waymobar.Widgets
   , workspaces
   , layoutName
   , windowTitle
+    -- * Icons
+  , icon
+  , withIcon
+  , iconColor
+  , withIconSize
+  , iconSource
     -- * Combinators
   , onClick
   , spawnOnClick
@@ -34,7 +40,9 @@ module Waymobar.Widgets
 import Control.Concurrent (forkIO, threadDelay)
 import qualified Control.Exception as E
 import Control.Monad (forever, unless, void, when)
+import Data.Char (toLower)
 import Data.IORef
+import Data.List (isSuffixOf)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Time (defaultTimeLocale, formatTime, getZonedTime, getCurrentTime, utctDayTime)
 import System.Directory (listDirectory)
@@ -270,6 +278,39 @@ windowTitle :: Int -> Widget
 windowTitle n = Widget $ \env -> pure $ \_ -> do
   mst <- rivermonadState env
   pure [ block (escape (shorten n t)) | Just t <- [mst >>= rsTitle], not (null t) ]
+
+------------------------------------------------------------------------------
+-- Icons
+
+-- | Where an icon comes from: a path (absolute, @~/...@, or anything with a
+-- @/@ or an image extension) is a file; anything else is an icon theme
+-- name, e.g. @"audio-volume-high-symbolic"@.
+iconSource :: String -> IconSource
+iconSource s
+  | '/' `elem` s || any (`isSuffixOf` map toLower s) [".svg", ".png", ".xpm", ".jpg", ".jpeg"] = IconFile s
+  | otherwise = IconName [] s
+
+-- | Just an icon. SVGs are drawn at the output's real resolution.
+--
+-- > icon "~/icons/wifi.svg"
+-- > icon "network-wireless-symbolic"
+icon :: String -> Widget
+icon s = Widget $ \_ -> pure $ \_ -> pure [ (block "") { blockIconSource = Just (iconSource s) } ]
+
+-- | Put an icon before the text of every block of a widget.
+--
+-- > withIcon "audio-volume-high-symbolic" volume
+withIcon :: String -> Widget -> Widget
+withIcon s = mapBlocks (\b -> b { blockIconSource = Just (iconSource s) })
+
+-- | Recolour the widget's icons (all of them, not only @-symbolic@ ones),
+-- handy for monochrome SVGs.
+iconColor :: String -> Widget -> Widget
+iconColor c = mapBlocks (\b -> b { blockIconColor = Just c, blockIconRecolorAll = True })
+
+-- | Icon size in logical pixels (default: the bar height minus 8).
+withIconSize :: Int -> Widget -> Widget
+withIconSize n = mapBlocks (\b -> b { blockIconSize = n })
 
 ------------------------------------------------------------------------------
 -- Combinators
