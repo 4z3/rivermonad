@@ -6,7 +6,8 @@
 -- * @{"Action":A}@: reply @{"Ok":"Handled"}@ and run A, where A is one of
 --   @{"FocusWorkspace":"3"}@, @{"ViewWorkspace":"3"}@, @"NextLayout"@,
 --   @{"JumpToLayout":"Full"}@, @"FocusUp"@, @"FocusDown"@, @"Restart"@,
---   @"Logout"@ (close every window, then end the session).
+--   @"Logout"@ (close every window, then end the session),
+--   @"NextKeyboardLayout"@.
 --
 -- The socket is @$XDG_RUNTIME_DIR/rivermonad-$WAYLAND_DISPLAY.sock@ and is
 -- exported to children as @RIVERMONAD_SOCKET@.
@@ -109,6 +110,7 @@ parseAction v = case v of
   J.JStr "FocusUp" -> Just IPCFocusUp
   J.JStr "FocusDown" -> Just IPCFocusDown
   J.JStr "Restart" -> Just IPCRestart
+  J.JStr "NextKeyboardLayout" -> Just IPCNextKeyboardLayout
   J.JStr "Logout" -> Just IPCLogout
   J.JObj [("FocusWorkspace", J.JStr t)] -> Just (IPCFocusWorkspace t)
   J.JObj [("ViewWorkspace", J.JStr t)] -> Just (IPCGreedyViewWorkspace t)

@@ -17,6 +17,7 @@ module Rivermonad.Wayland.Wire
   , registerObject
   , forgetObject
   , sendRequest
+  , queueFd
   , readMessages
   , RawMessage (..)
   , lookupInterface
@@ -40,10 +41,16 @@ import Data.Int (Int32)
 import qualified Data.IntMap.Strict as IM
 import Data.IORef
 import Data.Word (Word16, Word32)
+import Foreign.C.String (CString)
+import Foreign.C.Types (CInt (..), CSize (..))
+import Foreign.Marshal.Array (withArrayLen)
+import Foreign.Ptr (Ptr)
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
 import System.Environment (lookupEnv, unsetEnv)
 import System.FilePath ((</>), isAbsolute)
+import System.Posix.IO (closeFd, dup)
+import System.Posix.Types (Fd (..))
 
 newtype ObjectId = ObjectId { unObjectId :: Word32 }
   deriving (Eq, Ord)
@@ -61,6 +68,7 @@ data Conn = Conn
   , connObjects :: !(IORef (IM.IntMap B.ByteString))
   , connOut     :: !(IORef BB.Builder)
   , connIn      :: !(IORef B.ByteString)
+  , connFds     :: !(IORef [Fd])  -- ^ fds for the queued requests, oldest first (our dups)
   }
 
 data RawMessage = RawMessage
@@ -95,16 +103,37 @@ connect = do
     <*> newIORef (IM.singleton 1 "wl_display")
     <*> newIORef mempty
     <*> newIORef B.empty
+    <*> newIORef []
 
 closeConn :: Conn -> IO ()
 closeConn = NS.close . connSock
 
--- | Send every queued request to the compositor.
+-- | Send every queued request to the compositor, with the file descriptors
+-- they carry attached to the same message (libwayland takes them in order).
 flush :: Conn -> IO ()
 flush c = do
   out <- atomicModifyIORef' (connOut c) (\b -> (mempty, b))
+  fds <- atomicModifyIORef' (connFds c) (\f -> ([], f))
   let bytes = BL.toStrict (BB.toLazyByteString out)
-  unless (B.null bytes) $ NSB.sendAll (connSock c) bytes
+  if null fds
+    then unless (B.null bytes) $ NSB.sendAll (connSock c) bytes
+    else do
+      r <- NS.withFdSocket (connSock c) $ \sock ->
+        BU.unsafeUseAsCStringLen bytes $ \(p, len) ->
+          withArrayLen [ fromIntegral f | Fd f <- fds ] $ \n arr ->
+            c_send_fds sock p (fromIntegral len) arr (fromIntegral n)
+      mapM_ closeFd fds
+      when (r /= 0) $ throwIO (ErrorCall "rivermonad: sending file descriptors failed")
+
+-- | Attach a file descriptor to the next request. The fd is duplicated, so
+-- the caller keeps (and should close) its own.
+queueFd :: Conn -> Fd -> IO ()
+queueFd c fd = do
+  d <- dup fd
+  atomicModifyIORef' (connFds c) (\f -> (f ++ [d], ()))
+
+foreign import ccall unsafe "rivermonad_send_fds"
+  c_send_fds :: CInt -> CString -> CSize -> Ptr CInt -> CInt -> IO CInt
 
 -- | Allocate a client-side object id for an interface. Ids are never reused,
 -- which keeps the bookkeeping trivial (there are ~4 billion of them).

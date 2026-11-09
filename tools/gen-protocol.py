@@ -65,6 +65,7 @@ def main(paths):
     w("import Data.Int (Int32)")
     w("import Data.Word (Word16, Word32)")
     w("import Data.Binary.Get (Get)")
+    w("import System.Posix.Types (Fd)")
     w("import Rivermonad.Wayland.Wire")
     w("")
 
@@ -148,11 +149,14 @@ def main(paths):
         for op, rq in enumerate(i.findall("request")):
             fn = f"{ln}{camel(rq.get('name'), True)}"
             args = rq.findall("arg")
-            params, puts, ret_iface, untyped = [], [], None, False
+            params, puts, ret_iface, untyped, fd_params = [], [], None, False, []
             for k, a in enumerate(args):
                 t = a.get("type")
                 if t == "fd":
-                    sys.exit(f"fd args are not supported: {iname}.{rq.get('name')}")
+                    # fds travel out of band (SCM_RIGHTS), not in the payload
+                    params.append((f"a{k}", "Fd"))
+                    fd_params.append(f"a{k}")
+                    continue
                 if t == "new_id":
                     if a.get("interface"):
                         ret_iface = f"\"{a.get('interface')}\""
@@ -170,13 +174,21 @@ def main(paths):
             sig = " -> ".join(["Conn", "ObjectId"] + [t for _, t in params] + [ret])
             names = " ".join(["c", "self"] + [nm for nm, _ in params])
             body = " <> ".join(puts) if puts else "mempty"
+            fd_stmts = [f"queueFd c {p}" for p in fd_params]
             w(f"-- | {iname}.{rq.get('name')} (opcode {op})")
             w(f"{fn} :: {sig}")
             if ret_iface:
                 w(f"{fn} {names} = do")
                 w(f"  newObj <- newObject c {ret_iface}")
+                for st in fd_stmts:
+                    w(f"  {st}")
                 w(f"  sendRequest c self {op} ({body})")
                 w("  pure newObj")
+            elif fd_stmts:
+                w(f"{fn} {names} = do")
+                for st in fd_stmts:
+                    w(f"  {st}")
+                w(f"  sendRequest c self {op} ({body})")
             elif rq.get("type") == "destructor":
                 w(f"{fn} {names} = do")
                 w(f"  sendRequest c self {op} ({body})")

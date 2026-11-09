@@ -37,6 +37,7 @@ defaultConfig = XConfig
   , focusFollowsMouse = True
   , xcursorTheme = Nothing
   , allowTearing = True
+  , input = def
   }
 
 defaultLayout :: Layout Window

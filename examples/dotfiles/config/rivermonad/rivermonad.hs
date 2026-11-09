@@ -28,6 +28,9 @@ myConfig = def
   , workspaces         = ["web", "code", "term"] ++ map show [4 .. 9 :: Int]
   , layoutHook         = myLayout
   , manageHook         = myManageHook
+    -- US keys plus Spanish with AltGr (the right Option key on a Mac):
+    -- AltGr+n = ñ, AltGr+' then a vowel = á é í ó ú, AltGr+? = ¿, AltGr+1 = ¡
+  , input              = def { keyboard = def { kbLayout = "us", kbVariant = "altgr-intl" } }
   , startupHook        = do
       spawnOnce "waymobar"
       spawnOnce "mako"

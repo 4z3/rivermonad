@@ -17,6 +17,8 @@ module Rivermonad.Core
   , ExtensionClass (..), StateExtension (..)
     -- * Configuration
   , XConfig (..), Default (..)
+  , InputConfig (..), KeyboardConfig (..), PointerConfig (..), AccelProfile (..)
+  , InputDev (..), XkbKb (..), LiDev (..), KeymapState (..)
     -- * The X monad
   , X, XConf (..), XState (..), RationalRectS, runX, io, catchX, userCode, userCodeDef
   , withWindowSet, gets, modify, asks, ask, get, put
@@ -204,6 +206,9 @@ data Globals = Globals
   , gWmVersion  :: !Int
   , gXkb        :: !ObjectId
   , gLayerShell :: !(Maybe ObjectId)
+  , gInputManager :: !(Maybe ObjectId)  -- ^ river_input_manager_v1
+  , gXkbConfig    :: !(Maybe ObjectId)  -- ^ river_xkb_config_v1
+  , gLibinput     :: !(Maybe ObjectId)  -- ^ river_libinput_config_v1
   }
 
 -- | Thrown to unwind the main loop so the new binary can be exec'd.
@@ -219,6 +224,7 @@ data IPCAction
   | IPCFocusUp
   | IPCFocusDown
   | IPCRestart
+  | IPCNextKeyboardLayout
   | IPCLogout                         -- ^ close every window, then end the session
   | IPCLogoutCheck Int                -- ^ internal: the graceful logout timed out
   deriving (Show, Eq)
@@ -254,7 +260,85 @@ data XConfig = XConfig
   , focusFollowsMouse  :: !Bool
   , xcursorTheme       :: !(Maybe (String, Int))
   , allowTearing       :: !Bool  -- ^ let fullscreen windows that ask for it (games) tear for lower latency
+  , input              :: !InputConfig  -- ^ keyboard layout, key repeat, touchpad and mouse
   }
+
+------------------------------------------------------------------------------
+-- Input devices
+
+-- | Keyboard, touchpad and mouse settings. 'Nothing' (or an empty string)
+-- leaves the device or system default.
+data InputConfig = InputConfig
+  { keyboard :: !KeyboardConfig
+  , touchpad :: !PointerConfig   -- ^ devices with tap-to-click support
+  , mouse    :: !PointerConfig   -- ^ other pointers
+  }
+
+instance Default InputConfig where
+  def = InputConfig def def def
+
+-- | xkb names, as in @/etc/default/keyboard@ or sway's @xkb_*@ settings.
+-- Several layouts are comma-separated (@"us,es"@); switch between them
+-- with an option such as @"grp:alt_shift_toggle"@ or with
+-- 'Rivermonad.Operations.nextKeyboardLayout'.
+data KeyboardConfig = KeyboardConfig
+  { kbLayout  :: !String
+  , kbVariant :: !String               -- ^ per layout, comma-separated (@",mac"@)
+  , kbOptions :: !String               -- ^ e.g. @"caps:escape,compose:ralt"@
+  , kbModel   :: !String
+  , kbRepeat  :: !(Maybe (Int, Int))   -- ^ (keys per second, delay in ms)
+  , kbNumlock :: !(Maybe Bool)         -- ^ Num Lock state when a keyboard appears
+  }
+
+instance Default KeyboardConfig where
+  def = KeyboardConfig "" "" "" "" Nothing Nothing
+
+data AccelProfile = AccelFlat | AccelAdaptive
+  deriving (Eq, Show)
+
+data PointerConfig = PointerConfig
+  { tapToClick         :: !(Maybe Bool)
+  , naturalScroll      :: !(Maybe Bool)
+  , disableWhileTyping :: !(Maybe Bool)
+  , leftHanded         :: !(Maybe Bool)
+  , middleEmulation    :: !(Maybe Bool)
+  , accelProfile       :: !(Maybe AccelProfile)
+  , accelSpeed         :: !(Maybe Double)    -- ^ -1 (slowest) .. 1 (fastest); 0 = device default
+  }
+
+instance Default PointerConfig where
+  def = PointerConfig Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+
+-- | A river_input_device_v1 and what river told us about it.
+data InputDev = InputDev
+  { idType       :: !(Maybe Word32)   -- ^ keyboard 0, pointer 1, touch 2, tablet 3
+  , idName       :: !String
+  , idConfigured :: !Bool
+  }
+
+-- | A river_xkb_keyboard_v1.
+data XkbKb = XkbKb
+  { xkLayout    :: !(Int, String)     -- ^ current layout (index, name)
+  , xkKeymapSet :: !Bool
+  , xkNumlockSet :: !Bool
+  }
+
+-- | A river_libinput_device_v1: what it supports, collected until @done@.
+data LiDev = LiDev
+  { ldTapFingers    :: !Int
+  , ldNatural       :: !Bool
+  , ldDwt           :: !Bool
+  , ldLeftHanded    :: !Bool
+  , ldMiddle        :: !Bool
+  , ldAccelProfiles :: !Word32
+  , ldApplied       :: !Bool
+  }
+
+data KeymapState
+  = NoKeymap                  -- ^ nothing configured: river's default keymap
+  | KeymapPending ObjectId
+  | KeymapReady ObjectId
+  | KeymapFailed
 
 ------------------------------------------------------------------------------
 -- The X monad
@@ -292,6 +376,10 @@ data XState = XState
   , registryGlobals :: !(M.Map Word32 (B.ByteString, Word32)) -- ^ name -> (interface, version)
   , loggingOut      :: !(Maybe Int)     -- ^ a graceful logout is waiting for windows to close (attempt number)
   , layerDefault    :: !(Maybe ObjectId) -- ^ output last made river's default for layer surfaces
+  , inputDevices    :: !(M.Map ObjectId InputDev)
+  , xkbKeyboards    :: !(M.Map ObjectId XkbKb)
+  , libinputDevices :: !(M.Map ObjectId LiDev)
+  , keymapState     :: !KeymapState
   }
 
 -- | Serializable float geometry used by the restart state file.

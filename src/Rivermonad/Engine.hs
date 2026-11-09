@@ -31,6 +31,7 @@ import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 
 import Rivermonad.Core
+import Rivermonad.Input (currentKeyboardLayout, handleInputEvent, nextKeyboardLayout, setupKeymap)
 import qualified Rivermonad.JSON as J
 import Rivermonad.Layout (ChangeLayout (..), JumpToLayout (..))
 import Rivermonad.Operations
@@ -111,6 +112,13 @@ defaultHandler ev = case ev of
                                   -- force focus to be re-sent once the layer surface lets go
                                   , siFocused = if focused then siFocused si else Nothing }
                           else si)
+  ev' -> do
+    void (handleInputEvent ev')
+    -- Layout switches don't start a manage sequence: publish them now so
+    -- bars follow (publishState only sends when something changed).
+    case ev' of
+      EvRiverXkbKeyboardV1 {} -> catchX publishState (pure ())
+      _ -> pure ()
 
 -- | Queue without sending manage_dirty: every event we queue from is
 -- already followed by a manage_start.
@@ -371,6 +379,7 @@ manageBody = do
   st <- gets started
   unless st $ do
     modify $ \s -> s { started = True }
+    setupKeymap
     hook <- asks (startupHook . config)
     void (userCode hook)
   new <- gets (reverse . newWindows)
@@ -727,6 +736,7 @@ runIPCAction a = case a of
   IPCFocusUp -> windows W.focusUp
   IPCFocusDown -> windows W.focusDown
   IPCRestart -> requestRestart
+  IPCNextKeyboardLayout -> nextKeyboardLayout
   IPCLogout -> logoutGracefully
   IPCLogoutCheck n -> logoutTimedOut n
 
@@ -744,6 +754,7 @@ publishState = do
   tags <- asks (workspaces . config)
   publish <- asks ipcPublish
   have <- gets haveScreens
+  kbl <- currentKeyboardLayout
   let outName sd = M.lookup (sdOutput sd) outs >>= oiName
       shownOn = M.fromList [ (W.tag (W.workspace s), outName (W.screenDetail s)) | have, s <- W.screens ws ]
       extras = [ W.tag w | w <- W.workspaces ws, W.tag w `notElem` tags ]
@@ -765,5 +776,6 @@ publishState = do
         [ ("workspaces", J.JArr [ j | (i, t) <- zip [1 ..] ordered, Just j <- [wsJson i t] ])
         , ("focused_output", maybe J.JNull J.str (if have then outName (W.screenDetail (W.current ws)) else Nothing))
         , ("title", maybe J.JNull (J.str . wiTitle) focusedInfo)
-        , ("app_id", maybe J.JNull (J.str . wiAppId) focusedInfo) ]) ]
+        , ("app_id", maybe J.JNull (J.str . wiAppId) focusedInfo)
+        , ("keyboard_layout", maybe J.JNull J.str kbl) ]) ]
   io (publish (J.renderUtf8 state))

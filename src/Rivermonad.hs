@@ -13,6 +13,8 @@ module Rivermonad
   , module Rivermonad.ManageHook
   , module Rivermonad.Operations
   , rivermonad
+  , nextKeyboardLayout
+  , setKeyboardLayout
   , (.|.)
   , M.Map
   ) where
@@ -24,6 +26,7 @@ import Rivermonad.Config
 import Rivermonad.Core
 import Rivermonad.Keysym
 import Rivermonad.Layout
+import Rivermonad.Input (nextKeyboardLayout, setKeyboardLayout)
 import Rivermonad.Main (rivermonad)
 import Rivermonad.ManageHook
 import Rivermonad.Operations

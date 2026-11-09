@@ -15,7 +15,7 @@ category:           System
 build-type:         Simple
 extra-doc-files:    README.md
 data-files:         examples/rivermonad.hs
-extra-source-files: protocol/*.xml, tools/gen-protocol.py, tools/regen.sh
+extra-source-files: protocol/*.xml, tools/gen-protocol.py, tools/regen.sh, cbits/*.c
 
 common warnings
   ghc-options: -Wall -Wno-name-shadowing -Wno-orphans
@@ -35,6 +35,7 @@ library
     Rivermonad.Hooks.ManageHelpers
     Rivermonad.Hooks.StatusBar
     Rivermonad.IPC
+    Rivermonad.Input
     Rivermonad.Keysym
     Rivermonad.Layout
     Rivermonad.Layout.Grid
@@ -59,6 +60,8 @@ library
     Rivermonad.Wayland.Protocol
     Rivermonad.Wayland.Wire
   other-modules:    Paths_rivermonad
+  c-sources:        cbits/rivermonad.c
+  pkgconfig-depends: xkbcommon
   autogen-modules:  Paths_rivermonad
   build-depends:
       base        >=4.16 && <5

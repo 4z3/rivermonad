@@ -34,6 +34,20 @@ the stable `river-window-management-v1` protocol. Because of this split:
 * xmonad's default key bindings (with Super as the modifier), mouse move and
   resize of floating windows, focus follows mouse
 * compositor-drawn borders, client fullscreen requests and `mod-f`
+* keyboard, key repeat, touchpad and mouse settings in the config file
+  (river's input protocols): xkb layouts/variants/options compiled with
+  libxkbcommon, `nextKeyboardLayout`, tap to click, natural scrolling,
+  disable while typing, acceleration… The active layout is published over
+  IPC (`keyboard_layout`, action `"NextKeyboardLayout"`):
+
+  ```haskell
+  , input = def
+      { keyboard = def { kbLayout = "us,es", kbOptions = "grp:alt_shift_toggle,caps:escape"
+                       , kbRepeat = Just (40, 250) }
+      , touchpad = def { tapToClick = Just True, naturalScroll = Just True }
+      , mouse    = def { accelProfile = Just AccelFlat }
+      }
+  ```
 * tearing for games: a fullscreen window that asks for it
   (`wp_tearing_control`) makes its output present without vsync, back to
   vsync when it leaves; `allowTearing = False` turns it off. Pair it with
@@ -108,7 +122,7 @@ Customise it with a `PP` like xmonad's (`ppCurrent`, `ppHidden`, `ppTitle`,
 ## Installation
 
 ```sh
-sudo apt install ghc cabal-install    # or ghcup
+sudo apt install ghc cabal-install libxkbcommon-dev   # or ghcup
 cabal update
 cabal install --lib rivermonad        # so ghc can compile your config
 cabal install exe:rivermonad

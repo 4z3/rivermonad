@@ -7,6 +7,7 @@ import Data.ByteString (ByteString)
 import Data.Int (Int32)
 import Data.Word (Word16, Word32)
 import Data.Binary.Get (Get)
+import System.Posix.Types (Fd)
 import Rivermonad.Wayland.Wire
 
 -- | Any event from any interface known to rivermonad, tagged with its sender.
@@ -24,6 +25,14 @@ data Event
   | EvRiverXkbBindingsSeatV1 !ObjectId !RiverXkbBindingsSeatV1Event
   | EvRiverLayerShellOutputV1 !ObjectId !RiverLayerShellOutputV1Event
   | EvRiverLayerShellSeatV1 !ObjectId !RiverLayerShellSeatV1Event
+  | EvRiverInputManagerV1 !ObjectId !RiverInputManagerV1Event
+  | EvRiverInputDeviceV1 !ObjectId !RiverInputDeviceV1Event
+  | EvRiverXkbConfigV1 !ObjectId !RiverXkbConfigV1Event
+  | EvRiverXkbKeymapV1 !ObjectId !RiverXkbKeymapV1Event
+  | EvRiverXkbKeyboardV1 !ObjectId !RiverXkbKeyboardV1Event
+  | EvRiverLibinputConfigV1 !ObjectId !RiverLibinputConfigV1Event
+  | EvRiverLibinputDeviceV1 !ObjectId !RiverLibinputDeviceV1Event
+  | EvRiverLibinputResultV1 !ObjectId !RiverLibinputResultV1Event
   deriving (Show)
 
 -- | Find the decoder for an event, given the interface name of the sender.
@@ -42,6 +51,14 @@ decodeEvent "river_xkb_binding_v1" o op = fmap (\(e, ns) -> (EvRiverXkbBindingV1
 decodeEvent "river_xkb_bindings_seat_v1" o op = fmap (\(e, ns) -> (EvRiverXkbBindingsSeatV1 o e, ns)) <$> decodeRiverXkbBindingsSeatV1Event op
 decodeEvent "river_layer_shell_output_v1" o op = fmap (\(e, ns) -> (EvRiverLayerShellOutputV1 o e, ns)) <$> decodeRiverLayerShellOutputV1Event op
 decodeEvent "river_layer_shell_seat_v1" o op = fmap (\(e, ns) -> (EvRiverLayerShellSeatV1 o e, ns)) <$> decodeRiverLayerShellSeatV1Event op
+decodeEvent "river_input_manager_v1" o op = fmap (\(e, ns) -> (EvRiverInputManagerV1 o e, ns)) <$> decodeRiverInputManagerV1Event op
+decodeEvent "river_input_device_v1" o op = fmap (\(e, ns) -> (EvRiverInputDeviceV1 o e, ns)) <$> decodeRiverInputDeviceV1Event op
+decodeEvent "river_xkb_config_v1" o op = fmap (\(e, ns) -> (EvRiverXkbConfigV1 o e, ns)) <$> decodeRiverXkbConfigV1Event op
+decodeEvent "river_xkb_keymap_v1" o op = fmap (\(e, ns) -> (EvRiverXkbKeymapV1 o e, ns)) <$> decodeRiverXkbKeymapV1Event op
+decodeEvent "river_xkb_keyboard_v1" o op = fmap (\(e, ns) -> (EvRiverXkbKeyboardV1 o e, ns)) <$> decodeRiverXkbKeyboardV1Event op
+decodeEvent "river_libinput_config_v1" o op = fmap (\(e, ns) -> (EvRiverLibinputConfigV1 o e, ns)) <$> decodeRiverLibinputConfigV1Event op
+decodeEvent "river_libinput_device_v1" o op = fmap (\(e, ns) -> (EvRiverLibinputDeviceV1 o e, ns)) <$> decodeRiverLibinputDeviceV1Event op
+decodeEvent "river_libinput_result_v1" o op = fmap (\(e, ns) -> (EvRiverLibinputResultV1 o e, ns)) <$> decodeRiverLibinputResultV1Event op
 decodeEvent _ _ _ = Nothing
 
 -- * wl_display (version 1)
@@ -874,4 +891,750 @@ riverLayerShellSeatV1Destroy :: Conn -> ObjectId -> IO ()
 riverLayerShellSeatV1Destroy c self = do
   sendRequest c self 0 (mempty)
   forgetObject c self
+
+-- * river_input_manager_v1 (version 2)
+
+riverInputManagerV1Interface :: ByteString
+riverInputManagerV1Interface = "river_input_manager_v1"
+
+riverInputManagerV1Version :: Word32
+riverInputManagerV1Version = 2
+
+riverInputManagerV1ErrorInvalidDestroy :: Word32
+riverInputManagerV1ErrorInvalidDestroy = 0
+
+data RiverInputManagerV1Event
+  = RiverInputManagerV1Finished
+  | RiverInputManagerV1InputDevice !ObjectId
+  deriving (Show)
+
+decodeRiverInputManagerV1Event :: Word16 -> Maybe (Get (RiverInputManagerV1Event, [(ObjectId, ByteString)]))
+decodeRiverInputManagerV1Event 0 = Just (pure (RiverInputManagerV1Finished, []))
+decodeRiverInputManagerV1Event 1 = Just (do { a0 <- getObj; pure (RiverInputManagerV1InputDevice a0, [(a0, "river_input_device_v1")]) })
+decodeRiverInputManagerV1Event _ = Nothing
+
+-- | river_input_manager_v1.stop (opcode 0)
+riverInputManagerV1Stop :: Conn -> ObjectId -> IO ()
+riverInputManagerV1Stop c self = sendRequest c self 0 (mempty)
+
+-- | river_input_manager_v1.destroy (opcode 1)
+riverInputManagerV1Destroy :: Conn -> ObjectId -> IO ()
+riverInputManagerV1Destroy c self = do
+  sendRequest c self 1 (mempty)
+  forgetObject c self
+
+-- | river_input_manager_v1.create_seat (opcode 2)
+riverInputManagerV1CreateSeat :: Conn -> ObjectId -> ByteString -> IO ()
+riverInputManagerV1CreateSeat c self a0 = sendRequest c self 2 (putString a0)
+
+-- | river_input_manager_v1.destroy_seat (opcode 3)
+riverInputManagerV1DestroySeat :: Conn -> ObjectId -> ByteString -> IO ()
+riverInputManagerV1DestroySeat c self a0 = sendRequest c self 3 (putString a0)
+
+-- * river_input_device_v1 (version 2)
+
+riverInputDeviceV1Interface :: ByteString
+riverInputDeviceV1Interface = "river_input_device_v1"
+
+riverInputDeviceV1Version :: Word32
+riverInputDeviceV1Version = 2
+
+riverInputDeviceV1ErrorInvalidRepeatInfo :: Word32
+riverInputDeviceV1ErrorInvalidRepeatInfo = 0
+riverInputDeviceV1ErrorInvalidScrollFactor :: Word32
+riverInputDeviceV1ErrorInvalidScrollFactor = 1
+riverInputDeviceV1ErrorInvalidMapToRectangle :: Word32
+riverInputDeviceV1ErrorInvalidMapToRectangle = 2
+
+riverInputDeviceV1TypeKeyboard :: Word32
+riverInputDeviceV1TypeKeyboard = 0
+riverInputDeviceV1TypePointer :: Word32
+riverInputDeviceV1TypePointer = 1
+riverInputDeviceV1TypeTouch :: Word32
+riverInputDeviceV1TypeTouch = 2
+riverInputDeviceV1TypeTablet :: Word32
+riverInputDeviceV1TypeTablet = 3
+
+data RiverInputDeviceV1Event
+  = RiverInputDeviceV1Removed
+  | RiverInputDeviceV1Type !Word32
+  | RiverInputDeviceV1Name !ByteString
+  | RiverInputDeviceV1Done
+  deriving (Show)
+
+decodeRiverInputDeviceV1Event :: Word16 -> Maybe (Get (RiverInputDeviceV1Event, [(ObjectId, ByteString)]))
+decodeRiverInputDeviceV1Event 0 = Just (pure (RiverInputDeviceV1Removed, []))
+decodeRiverInputDeviceV1Event 1 = Just (do { a0 <- getUint; pure (RiverInputDeviceV1Type a0, []) })
+decodeRiverInputDeviceV1Event 2 = Just (do { a0 <- getStr; pure (RiverInputDeviceV1Name a0, []) })
+decodeRiverInputDeviceV1Event 3 = Just (pure (RiverInputDeviceV1Done, []))
+decodeRiverInputDeviceV1Event _ = Nothing
+
+-- | river_input_device_v1.destroy (opcode 0)
+riverInputDeviceV1Destroy :: Conn -> ObjectId -> IO ()
+riverInputDeviceV1Destroy c self = do
+  sendRequest c self 0 (mempty)
+  forgetObject c self
+
+-- | river_input_device_v1.assign_to_seat (opcode 1)
+riverInputDeviceV1AssignToSeat :: Conn -> ObjectId -> ByteString -> IO ()
+riverInputDeviceV1AssignToSeat c self a0 = sendRequest c self 1 (putString a0)
+
+-- | river_input_device_v1.set_repeat_info (opcode 2)
+riverInputDeviceV1SetRepeatInfo :: Conn -> ObjectId -> Int32 -> Int32 -> IO ()
+riverInputDeviceV1SetRepeatInfo c self a0 a1 = sendRequest c self 2 (putInt a0 <> putInt a1)
+
+-- | river_input_device_v1.set_scroll_factor (opcode 3)
+riverInputDeviceV1SetScrollFactor :: Conn -> ObjectId -> Double -> IO ()
+riverInputDeviceV1SetScrollFactor c self a0 = sendRequest c self 3 (putFixed a0)
+
+-- | river_input_device_v1.map_to_output (opcode 4)
+riverInputDeviceV1MapToOutput :: Conn -> ObjectId -> ObjectId -> IO ()
+riverInputDeviceV1MapToOutput c self a0 = sendRequest c self 4 (putObj a0)
+
+-- | river_input_device_v1.map_to_rectangle (opcode 5)
+riverInputDeviceV1MapToRectangle :: Conn -> ObjectId -> Int32 -> Int32 -> Int32 -> Int32 -> IO ()
+riverInputDeviceV1MapToRectangle c self a0 a1 a2 a3 = sendRequest c self 5 (putInt a0 <> putInt a1 <> putInt a2 <> putInt a3)
+
+-- * river_xkb_config_v1 (version 3)
+
+riverXkbConfigV1Interface :: ByteString
+riverXkbConfigV1Interface = "river_xkb_config_v1"
+
+riverXkbConfigV1Version :: Word32
+riverXkbConfigV1Version = 3
+
+riverXkbConfigV1ErrorInvalidDestroy :: Word32
+riverXkbConfigV1ErrorInvalidDestroy = 0
+riverXkbConfigV1ErrorInvalidFormat :: Word32
+riverXkbConfigV1ErrorInvalidFormat = 1
+
+riverXkbConfigV1KeymapFormatTextV1 :: Word32
+riverXkbConfigV1KeymapFormatTextV1 = 1
+riverXkbConfigV1KeymapFormatTextV2 :: Word32
+riverXkbConfigV1KeymapFormatTextV2 = 2
+
+data RiverXkbConfigV1Event
+  = RiverXkbConfigV1Finished
+  | RiverXkbConfigV1XkbKeyboard !ObjectId
+  deriving (Show)
+
+decodeRiverXkbConfigV1Event :: Word16 -> Maybe (Get (RiverXkbConfigV1Event, [(ObjectId, ByteString)]))
+decodeRiverXkbConfigV1Event 0 = Just (pure (RiverXkbConfigV1Finished, []))
+decodeRiverXkbConfigV1Event 1 = Just (do { a0 <- getObj; pure (RiverXkbConfigV1XkbKeyboard a0, [(a0, "river_xkb_keyboard_v1")]) })
+decodeRiverXkbConfigV1Event _ = Nothing
+
+-- | river_xkb_config_v1.stop (opcode 0)
+riverXkbConfigV1Stop :: Conn -> ObjectId -> IO ()
+riverXkbConfigV1Stop c self = sendRequest c self 0 (mempty)
+
+-- | river_xkb_config_v1.destroy (opcode 1)
+riverXkbConfigV1Destroy :: Conn -> ObjectId -> IO ()
+riverXkbConfigV1Destroy c self = do
+  sendRequest c self 1 (mempty)
+  forgetObject c self
+
+-- | river_xkb_config_v1.create_keymap (opcode 2)
+riverXkbConfigV1CreateKeymap :: Conn -> ObjectId -> Fd -> Word32 -> IO ObjectId
+riverXkbConfigV1CreateKeymap c self a1 a2 = do
+  newObj <- newObject c "river_xkb_keymap_v1"
+  queueFd c a1
+  sendRequest c self 2 (putObj newObj <> putUint a2)
+  pure newObj
+
+-- * river_xkb_keymap_v1 (version 3)
+
+riverXkbKeymapV1Interface :: ByteString
+riverXkbKeymapV1Interface = "river_xkb_keymap_v1"
+
+riverXkbKeymapV1Version :: Word32
+riverXkbKeymapV1Version = 3
+
+data RiverXkbKeymapV1Event
+  = RiverXkbKeymapV1Success
+  | RiverXkbKeymapV1Failure !ByteString
+  deriving (Show)
+
+decodeRiverXkbKeymapV1Event :: Word16 -> Maybe (Get (RiverXkbKeymapV1Event, [(ObjectId, ByteString)]))
+decodeRiverXkbKeymapV1Event 0 = Just (pure (RiverXkbKeymapV1Success, []))
+decodeRiverXkbKeymapV1Event 1 = Just (do { a0 <- getStr; pure (RiverXkbKeymapV1Failure a0, []) })
+decodeRiverXkbKeymapV1Event _ = Nothing
+
+-- | river_xkb_keymap_v1.destroy (opcode 0)
+riverXkbKeymapV1Destroy :: Conn -> ObjectId -> IO ()
+riverXkbKeymapV1Destroy c self = do
+  sendRequest c self 0 (mempty)
+  forgetObject c self
+
+-- * river_xkb_keyboard_v1 (version 3)
+
+riverXkbKeyboardV1Interface :: ByteString
+riverXkbKeyboardV1Interface = "river_xkb_keyboard_v1"
+
+riverXkbKeyboardV1Version :: Word32
+riverXkbKeyboardV1Version = 3
+
+riverXkbKeyboardV1ErrorInvalidKeymap :: Word32
+riverXkbKeyboardV1ErrorInvalidKeymap = 0
+
+data RiverXkbKeyboardV1Event
+  = RiverXkbKeyboardV1Removed
+  | RiverXkbKeyboardV1InputDevice !ObjectId
+  | RiverXkbKeyboardV1Layout !Word32 !ByteString
+  | RiverXkbKeyboardV1CapslockEnabled
+  | RiverXkbKeyboardV1CapslockDisabled
+  | RiverXkbKeyboardV1NumlockEnabled
+  | RiverXkbKeyboardV1NumlockDisabled
+  | RiverXkbKeyboardV1Done
+  | RiverXkbKeyboardV1ScrolllockEnabled
+  | RiverXkbKeyboardV1ScrolllockDisabled
+  deriving (Show)
+
+decodeRiverXkbKeyboardV1Event :: Word16 -> Maybe (Get (RiverXkbKeyboardV1Event, [(ObjectId, ByteString)]))
+decodeRiverXkbKeyboardV1Event 0 = Just (pure (RiverXkbKeyboardV1Removed, []))
+decodeRiverXkbKeyboardV1Event 1 = Just (do { a0 <- getObj; pure (RiverXkbKeyboardV1InputDevice a0, []) })
+decodeRiverXkbKeyboardV1Event 2 = Just (do { a0 <- getUint; a1 <- getStr; pure (RiverXkbKeyboardV1Layout a0 a1, []) })
+decodeRiverXkbKeyboardV1Event 3 = Just (pure (RiverXkbKeyboardV1CapslockEnabled, []))
+decodeRiverXkbKeyboardV1Event 4 = Just (pure (RiverXkbKeyboardV1CapslockDisabled, []))
+decodeRiverXkbKeyboardV1Event 5 = Just (pure (RiverXkbKeyboardV1NumlockEnabled, []))
+decodeRiverXkbKeyboardV1Event 6 = Just (pure (RiverXkbKeyboardV1NumlockDisabled, []))
+decodeRiverXkbKeyboardV1Event 7 = Just (pure (RiverXkbKeyboardV1Done, []))
+decodeRiverXkbKeyboardV1Event 8 = Just (pure (RiverXkbKeyboardV1ScrolllockEnabled, []))
+decodeRiverXkbKeyboardV1Event 9 = Just (pure (RiverXkbKeyboardV1ScrolllockDisabled, []))
+decodeRiverXkbKeyboardV1Event _ = Nothing
+
+-- | river_xkb_keyboard_v1.destroy (opcode 0)
+riverXkbKeyboardV1Destroy :: Conn -> ObjectId -> IO ()
+riverXkbKeyboardV1Destroy c self = do
+  sendRequest c self 0 (mempty)
+  forgetObject c self
+
+-- | river_xkb_keyboard_v1.set_keymap (opcode 1)
+riverXkbKeyboardV1SetKeymap :: Conn -> ObjectId -> ObjectId -> IO ()
+riverXkbKeyboardV1SetKeymap c self a0 = sendRequest c self 1 (putObj a0)
+
+-- | river_xkb_keyboard_v1.set_layout_by_index (opcode 2)
+riverXkbKeyboardV1SetLayoutByIndex :: Conn -> ObjectId -> Int32 -> IO ()
+riverXkbKeyboardV1SetLayoutByIndex c self a0 = sendRequest c self 2 (putInt a0)
+
+-- | river_xkb_keyboard_v1.set_layout_by_name (opcode 3)
+riverXkbKeyboardV1SetLayoutByName :: Conn -> ObjectId -> ByteString -> IO ()
+riverXkbKeyboardV1SetLayoutByName c self a0 = sendRequest c self 3 (putString a0)
+
+-- | river_xkb_keyboard_v1.capslock_enable (opcode 4)
+riverXkbKeyboardV1CapslockEnable :: Conn -> ObjectId -> IO ()
+riverXkbKeyboardV1CapslockEnable c self = sendRequest c self 4 (mempty)
+
+-- | river_xkb_keyboard_v1.capslock_disable (opcode 5)
+riverXkbKeyboardV1CapslockDisable :: Conn -> ObjectId -> IO ()
+riverXkbKeyboardV1CapslockDisable c self = sendRequest c self 5 (mempty)
+
+-- | river_xkb_keyboard_v1.numlock_enable (opcode 6)
+riverXkbKeyboardV1NumlockEnable :: Conn -> ObjectId -> IO ()
+riverXkbKeyboardV1NumlockEnable c self = sendRequest c self 6 (mempty)
+
+-- | river_xkb_keyboard_v1.numlock_disable (opcode 7)
+riverXkbKeyboardV1NumlockDisable :: Conn -> ObjectId -> IO ()
+riverXkbKeyboardV1NumlockDisable c self = sendRequest c self 7 (mempty)
+
+-- | river_xkb_keyboard_v1.scrolllock_enable (opcode 8)
+riverXkbKeyboardV1ScrolllockEnable :: Conn -> ObjectId -> IO ()
+riverXkbKeyboardV1ScrolllockEnable c self = sendRequest c self 8 (mempty)
+
+-- | river_xkb_keyboard_v1.scrolllock_disable (opcode 9)
+riverXkbKeyboardV1ScrolllockDisable :: Conn -> ObjectId -> IO ()
+riverXkbKeyboardV1ScrolllockDisable c self = sendRequest c self 9 (mempty)
+
+-- * river_libinput_config_v1 (version 2)
+
+riverLibinputConfigV1Interface :: ByteString
+riverLibinputConfigV1Interface = "river_libinput_config_v1"
+
+riverLibinputConfigV1Version :: Word32
+riverLibinputConfigV1Version = 2
+
+riverLibinputConfigV1ErrorInvalidArg :: Word32
+riverLibinputConfigV1ErrorInvalidArg = 0
+riverLibinputConfigV1ErrorInvalidDestroy :: Word32
+riverLibinputConfigV1ErrorInvalidDestroy = 1
+
+data RiverLibinputConfigV1Event
+  = RiverLibinputConfigV1Finished
+  | RiverLibinputConfigV1LibinputDevice !ObjectId
+  deriving (Show)
+
+decodeRiverLibinputConfigV1Event :: Word16 -> Maybe (Get (RiverLibinputConfigV1Event, [(ObjectId, ByteString)]))
+decodeRiverLibinputConfigV1Event 0 = Just (pure (RiverLibinputConfigV1Finished, []))
+decodeRiverLibinputConfigV1Event 1 = Just (do { a0 <- getObj; pure (RiverLibinputConfigV1LibinputDevice a0, [(a0, "river_libinput_device_v1")]) })
+decodeRiverLibinputConfigV1Event _ = Nothing
+
+-- | river_libinput_config_v1.stop (opcode 0)
+riverLibinputConfigV1Stop :: Conn -> ObjectId -> IO ()
+riverLibinputConfigV1Stop c self = sendRequest c self 0 (mempty)
+
+-- | river_libinput_config_v1.destroy (opcode 1)
+riverLibinputConfigV1Destroy :: Conn -> ObjectId -> IO ()
+riverLibinputConfigV1Destroy c self = do
+  sendRequest c self 1 (mempty)
+  forgetObject c self
+
+-- | river_libinput_config_v1.create_accel_config (opcode 2)
+riverLibinputConfigV1CreateAccelConfig :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputConfigV1CreateAccelConfig c self a1 = do
+  newObj <- newObject c "river_libinput_accel_config_v1"
+  sendRequest c self 2 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- * river_libinput_device_v1 (version 2)
+
+riverLibinputDeviceV1Interface :: ByteString
+riverLibinputDeviceV1Interface = "river_libinput_device_v1"
+
+riverLibinputDeviceV1Version :: Word32
+riverLibinputDeviceV1Version = 2
+
+riverLibinputDeviceV1ErrorInvalidArg :: Word32
+riverLibinputDeviceV1ErrorInvalidArg = 0
+
+riverLibinputDeviceV1SendEventsModesEnabled :: Word32
+riverLibinputDeviceV1SendEventsModesEnabled = 0
+riverLibinputDeviceV1SendEventsModesDisabled :: Word32
+riverLibinputDeviceV1SendEventsModesDisabled = 1
+riverLibinputDeviceV1SendEventsModesDisabledOnExternalMouse :: Word32
+riverLibinputDeviceV1SendEventsModesDisabledOnExternalMouse = 2
+
+riverLibinputDeviceV1TapStateDisabled :: Word32
+riverLibinputDeviceV1TapStateDisabled = 0
+riverLibinputDeviceV1TapStateEnabled :: Word32
+riverLibinputDeviceV1TapStateEnabled = 1
+
+riverLibinputDeviceV1TapButtonMapLrm :: Word32
+riverLibinputDeviceV1TapButtonMapLrm = 0
+riverLibinputDeviceV1TapButtonMapLmr :: Word32
+riverLibinputDeviceV1TapButtonMapLmr = 1
+
+riverLibinputDeviceV1DragStateDisabled :: Word32
+riverLibinputDeviceV1DragStateDisabled = 0
+riverLibinputDeviceV1DragStateEnabled :: Word32
+riverLibinputDeviceV1DragStateEnabled = 1
+
+riverLibinputDeviceV1DragLockStateDisabled :: Word32
+riverLibinputDeviceV1DragLockStateDisabled = 0
+riverLibinputDeviceV1DragLockStateEnabledTimeout :: Word32
+riverLibinputDeviceV1DragLockStateEnabledTimeout = 1
+riverLibinputDeviceV1DragLockStateEnabledSticky :: Word32
+riverLibinputDeviceV1DragLockStateEnabledSticky = 2
+
+riverLibinputDeviceV1ThreeFingerDragStateDisabled :: Word32
+riverLibinputDeviceV1ThreeFingerDragStateDisabled = 0
+riverLibinputDeviceV1ThreeFingerDragStateEnabled3fg :: Word32
+riverLibinputDeviceV1ThreeFingerDragStateEnabled3fg = 1
+riverLibinputDeviceV1ThreeFingerDragStateEnabled4fg :: Word32
+riverLibinputDeviceV1ThreeFingerDragStateEnabled4fg = 2
+
+riverLibinputDeviceV1AccelProfileNone :: Word32
+riverLibinputDeviceV1AccelProfileNone = 0
+riverLibinputDeviceV1AccelProfileFlat :: Word32
+riverLibinputDeviceV1AccelProfileFlat = 1
+riverLibinputDeviceV1AccelProfileAdaptive :: Word32
+riverLibinputDeviceV1AccelProfileAdaptive = 2
+riverLibinputDeviceV1AccelProfileCustom :: Word32
+riverLibinputDeviceV1AccelProfileCustom = 4
+
+riverLibinputDeviceV1AccelProfilesNone :: Word32
+riverLibinputDeviceV1AccelProfilesNone = 0
+riverLibinputDeviceV1AccelProfilesFlat :: Word32
+riverLibinputDeviceV1AccelProfilesFlat = 1
+riverLibinputDeviceV1AccelProfilesAdaptive :: Word32
+riverLibinputDeviceV1AccelProfilesAdaptive = 2
+riverLibinputDeviceV1AccelProfilesCustom :: Word32
+riverLibinputDeviceV1AccelProfilesCustom = 4
+
+riverLibinputDeviceV1NaturalScrollStateDisabled :: Word32
+riverLibinputDeviceV1NaturalScrollStateDisabled = 0
+riverLibinputDeviceV1NaturalScrollStateEnabled :: Word32
+riverLibinputDeviceV1NaturalScrollStateEnabled = 1
+
+riverLibinputDeviceV1LeftHandedStateDisabled :: Word32
+riverLibinputDeviceV1LeftHandedStateDisabled = 0
+riverLibinputDeviceV1LeftHandedStateEnabled :: Word32
+riverLibinputDeviceV1LeftHandedStateEnabled = 1
+
+riverLibinputDeviceV1ClickMethodNone :: Word32
+riverLibinputDeviceV1ClickMethodNone = 0
+riverLibinputDeviceV1ClickMethodButtonAreas :: Word32
+riverLibinputDeviceV1ClickMethodButtonAreas = 1
+riverLibinputDeviceV1ClickMethodClickfinger :: Word32
+riverLibinputDeviceV1ClickMethodClickfinger = 2
+
+riverLibinputDeviceV1ClickMethodsNone :: Word32
+riverLibinputDeviceV1ClickMethodsNone = 0
+riverLibinputDeviceV1ClickMethodsButtonAreas :: Word32
+riverLibinputDeviceV1ClickMethodsButtonAreas = 1
+riverLibinputDeviceV1ClickMethodsClickfinger :: Word32
+riverLibinputDeviceV1ClickMethodsClickfinger = 2
+
+riverLibinputDeviceV1ClickfingerButtonMapLrm :: Word32
+riverLibinputDeviceV1ClickfingerButtonMapLrm = 0
+riverLibinputDeviceV1ClickfingerButtonMapLmr :: Word32
+riverLibinputDeviceV1ClickfingerButtonMapLmr = 1
+
+riverLibinputDeviceV1MiddleEmulationStateDisabled :: Word32
+riverLibinputDeviceV1MiddleEmulationStateDisabled = 0
+riverLibinputDeviceV1MiddleEmulationStateEnabled :: Word32
+riverLibinputDeviceV1MiddleEmulationStateEnabled = 1
+
+riverLibinputDeviceV1ScrollMethodNoScroll :: Word32
+riverLibinputDeviceV1ScrollMethodNoScroll = 0
+riverLibinputDeviceV1ScrollMethodTwoFinger :: Word32
+riverLibinputDeviceV1ScrollMethodTwoFinger = 1
+riverLibinputDeviceV1ScrollMethodEdge :: Word32
+riverLibinputDeviceV1ScrollMethodEdge = 2
+riverLibinputDeviceV1ScrollMethodOnButtonDown :: Word32
+riverLibinputDeviceV1ScrollMethodOnButtonDown = 4
+
+riverLibinputDeviceV1ScrollMethodsNoScroll :: Word32
+riverLibinputDeviceV1ScrollMethodsNoScroll = 0
+riverLibinputDeviceV1ScrollMethodsTwoFinger :: Word32
+riverLibinputDeviceV1ScrollMethodsTwoFinger = 1
+riverLibinputDeviceV1ScrollMethodsEdge :: Word32
+riverLibinputDeviceV1ScrollMethodsEdge = 2
+riverLibinputDeviceV1ScrollMethodsOnButtonDown :: Word32
+riverLibinputDeviceV1ScrollMethodsOnButtonDown = 4
+
+riverLibinputDeviceV1ScrollButtonLockStateDisabled :: Word32
+riverLibinputDeviceV1ScrollButtonLockStateDisabled = 0
+riverLibinputDeviceV1ScrollButtonLockStateEnabled :: Word32
+riverLibinputDeviceV1ScrollButtonLockStateEnabled = 1
+
+riverLibinputDeviceV1DwtStateDisabled :: Word32
+riverLibinputDeviceV1DwtStateDisabled = 0
+riverLibinputDeviceV1DwtStateEnabled :: Word32
+riverLibinputDeviceV1DwtStateEnabled = 1
+
+riverLibinputDeviceV1DwtpStateDisabled :: Word32
+riverLibinputDeviceV1DwtpStateDisabled = 0
+riverLibinputDeviceV1DwtpStateEnabled :: Word32
+riverLibinputDeviceV1DwtpStateEnabled = 1
+
+data RiverLibinputDeviceV1Event
+  = RiverLibinputDeviceV1Removed
+  | RiverLibinputDeviceV1InputDevice !ObjectId
+  | RiverLibinputDeviceV1SendEventsSupport !Word32
+  | RiverLibinputDeviceV1SendEventsDefault !Word32
+  | RiverLibinputDeviceV1SendEventsCurrent !Word32
+  | RiverLibinputDeviceV1TapSupport !Int32
+  | RiverLibinputDeviceV1TapDefault !Word32
+  | RiverLibinputDeviceV1TapCurrent !Word32
+  | RiverLibinputDeviceV1TapButtonMapDefault !Word32
+  | RiverLibinputDeviceV1TapButtonMapCurrent !Word32
+  | RiverLibinputDeviceV1DragDefault !Word32
+  | RiverLibinputDeviceV1DragCurrent !Word32
+  | RiverLibinputDeviceV1DragLockDefault !Word32
+  | RiverLibinputDeviceV1DragLockCurrent !Word32
+  | RiverLibinputDeviceV1ThreeFingerDragSupport !Int32
+  | RiverLibinputDeviceV1ThreeFingerDragDefault !Word32
+  | RiverLibinputDeviceV1ThreeFingerDragCurrent !Word32
+  | RiverLibinputDeviceV1CalibrationMatrixSupport !Int32
+  | RiverLibinputDeviceV1CalibrationMatrixDefault !ByteString
+  | RiverLibinputDeviceV1CalibrationMatrixCurrent !ByteString
+  | RiverLibinputDeviceV1AccelProfilesSupport !Word32
+  | RiverLibinputDeviceV1AccelProfileDefault !Word32
+  | RiverLibinputDeviceV1AccelProfileCurrent !Word32
+  | RiverLibinputDeviceV1AccelSpeedDefault !ByteString
+  | RiverLibinputDeviceV1AccelSpeedCurrent !ByteString
+  | RiverLibinputDeviceV1NaturalScrollSupport !Int32
+  | RiverLibinputDeviceV1NaturalScrollDefault !Word32
+  | RiverLibinputDeviceV1NaturalScrollCurrent !Word32
+  | RiverLibinputDeviceV1LeftHandedSupport !Int32
+  | RiverLibinputDeviceV1LeftHandedDefault !Word32
+  | RiverLibinputDeviceV1LeftHandedCurrent !Word32
+  | RiverLibinputDeviceV1ClickMethodSupport !Word32
+  | RiverLibinputDeviceV1ClickMethodDefault !Word32
+  | RiverLibinputDeviceV1ClickMethodCurrent !Word32
+  | RiverLibinputDeviceV1ClickfingerButtonMapDefault !Word32
+  | RiverLibinputDeviceV1ClickfingerButtonMapCurrent !Word32
+  | RiverLibinputDeviceV1MiddleEmulationSupport !Int32
+  | RiverLibinputDeviceV1MiddleEmulationDefault !Word32
+  | RiverLibinputDeviceV1MiddleEmulationCurrent !Word32
+  | RiverLibinputDeviceV1ScrollMethodSupport !Word32
+  | RiverLibinputDeviceV1ScrollMethodDefault !Word32
+  | RiverLibinputDeviceV1ScrollMethodCurrent !Word32
+  | RiverLibinputDeviceV1ScrollButtonDefault !Word32
+  | RiverLibinputDeviceV1ScrollButtonCurrent !Word32
+  | RiverLibinputDeviceV1ScrollButtonLockDefault !Word32
+  | RiverLibinputDeviceV1ScrollButtonLockCurrent !Word32
+  | RiverLibinputDeviceV1DwtSupport !Int32
+  | RiverLibinputDeviceV1DwtDefault !Word32
+  | RiverLibinputDeviceV1DwtCurrent !Word32
+  | RiverLibinputDeviceV1DwtpSupport !Int32
+  | RiverLibinputDeviceV1DwtpDefault !Word32
+  | RiverLibinputDeviceV1DwtpCurrent !Word32
+  | RiverLibinputDeviceV1RotationSupport !Int32
+  | RiverLibinputDeviceV1RotationDefault !Word32
+  | RiverLibinputDeviceV1RotationCurrent !Word32
+  | RiverLibinputDeviceV1Done
+  deriving (Show)
+
+decodeRiverLibinputDeviceV1Event :: Word16 -> Maybe (Get (RiverLibinputDeviceV1Event, [(ObjectId, ByteString)]))
+decodeRiverLibinputDeviceV1Event 0 = Just (pure (RiverLibinputDeviceV1Removed, []))
+decodeRiverLibinputDeviceV1Event 1 = Just (do { a0 <- getObj; pure (RiverLibinputDeviceV1InputDevice a0, []) })
+decodeRiverLibinputDeviceV1Event 2 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1SendEventsSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 3 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1SendEventsDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 4 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1SendEventsCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 5 = Just (do { a0 <- getInt; pure (RiverLibinputDeviceV1TapSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 6 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1TapDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 7 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1TapCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 8 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1TapButtonMapDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 9 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1TapButtonMapCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 10 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1DragDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 11 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1DragCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 12 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1DragLockDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 13 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1DragLockCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 14 = Just (do { a0 <- getInt; pure (RiverLibinputDeviceV1ThreeFingerDragSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 15 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ThreeFingerDragDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 16 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ThreeFingerDragCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 17 = Just (do { a0 <- getInt; pure (RiverLibinputDeviceV1CalibrationMatrixSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 18 = Just (do { a0 <- getArray; pure (RiverLibinputDeviceV1CalibrationMatrixDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 19 = Just (do { a0 <- getArray; pure (RiverLibinputDeviceV1CalibrationMatrixCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 20 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1AccelProfilesSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 21 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1AccelProfileDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 22 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1AccelProfileCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 23 = Just (do { a0 <- getArray; pure (RiverLibinputDeviceV1AccelSpeedDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 24 = Just (do { a0 <- getArray; pure (RiverLibinputDeviceV1AccelSpeedCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 25 = Just (do { a0 <- getInt; pure (RiverLibinputDeviceV1NaturalScrollSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 26 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1NaturalScrollDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 27 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1NaturalScrollCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 28 = Just (do { a0 <- getInt; pure (RiverLibinputDeviceV1LeftHandedSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 29 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1LeftHandedDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 30 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1LeftHandedCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 31 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ClickMethodSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 32 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ClickMethodDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 33 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ClickMethodCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 34 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ClickfingerButtonMapDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 35 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ClickfingerButtonMapCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 36 = Just (do { a0 <- getInt; pure (RiverLibinputDeviceV1MiddleEmulationSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 37 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1MiddleEmulationDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 38 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1MiddleEmulationCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 39 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ScrollMethodSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 40 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ScrollMethodDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 41 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ScrollMethodCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 42 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ScrollButtonDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 43 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ScrollButtonCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 44 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ScrollButtonLockDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 45 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1ScrollButtonLockCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 46 = Just (do { a0 <- getInt; pure (RiverLibinputDeviceV1DwtSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 47 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1DwtDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 48 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1DwtCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 49 = Just (do { a0 <- getInt; pure (RiverLibinputDeviceV1DwtpSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 50 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1DwtpDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 51 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1DwtpCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 52 = Just (do { a0 <- getInt; pure (RiverLibinputDeviceV1RotationSupport a0, []) })
+decodeRiverLibinputDeviceV1Event 53 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1RotationDefault a0, []) })
+decodeRiverLibinputDeviceV1Event 54 = Just (do { a0 <- getUint; pure (RiverLibinputDeviceV1RotationCurrent a0, []) })
+decodeRiverLibinputDeviceV1Event 55 = Just (pure (RiverLibinputDeviceV1Done, []))
+decodeRiverLibinputDeviceV1Event _ = Nothing
+
+-- | river_libinput_device_v1.destroy (opcode 0)
+riverLibinputDeviceV1Destroy :: Conn -> ObjectId -> IO ()
+riverLibinputDeviceV1Destroy c self = do
+  sendRequest c self 0 (mempty)
+  forgetObject c self
+
+-- | river_libinput_device_v1.set_send_events (opcode 1)
+riverLibinputDeviceV1SetSendEvents :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetSendEvents c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 1 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_tap (opcode 2)
+riverLibinputDeviceV1SetTap :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetTap c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 2 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_tap_button_map (opcode 3)
+riverLibinputDeviceV1SetTapButtonMap :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetTapButtonMap c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 3 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_drag (opcode 4)
+riverLibinputDeviceV1SetDrag :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetDrag c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 4 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_drag_lock (opcode 5)
+riverLibinputDeviceV1SetDragLock :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetDragLock c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 5 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_three_finger_drag (opcode 6)
+riverLibinputDeviceV1SetThreeFingerDrag :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetThreeFingerDrag c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 6 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_calibration_matrix (opcode 7)
+riverLibinputDeviceV1SetCalibrationMatrix :: Conn -> ObjectId -> ByteString -> IO ObjectId
+riverLibinputDeviceV1SetCalibrationMatrix c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 7 (putObj newObj <> putArray a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_accel_profile (opcode 8)
+riverLibinputDeviceV1SetAccelProfile :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetAccelProfile c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 8 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_accel_speed (opcode 9)
+riverLibinputDeviceV1SetAccelSpeed :: Conn -> ObjectId -> ByteString -> IO ObjectId
+riverLibinputDeviceV1SetAccelSpeed c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 9 (putObj newObj <> putArray a1)
+  pure newObj
+
+-- | river_libinput_device_v1.apply_accel_config (opcode 10)
+riverLibinputDeviceV1ApplyAccelConfig :: Conn -> ObjectId -> ObjectId -> IO ObjectId
+riverLibinputDeviceV1ApplyAccelConfig c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 10 (putObj newObj <> putObj a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_natural_scroll (opcode 11)
+riverLibinputDeviceV1SetNaturalScroll :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetNaturalScroll c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 11 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_left_handed (opcode 12)
+riverLibinputDeviceV1SetLeftHanded :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetLeftHanded c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 12 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_click_method (opcode 13)
+riverLibinputDeviceV1SetClickMethod :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetClickMethod c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 13 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_clickfinger_button_map (opcode 14)
+riverLibinputDeviceV1SetClickfingerButtonMap :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetClickfingerButtonMap c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 14 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_middle_emulation (opcode 15)
+riverLibinputDeviceV1SetMiddleEmulation :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetMiddleEmulation c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 15 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_scroll_method (opcode 16)
+riverLibinputDeviceV1SetScrollMethod :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetScrollMethod c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 16 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_scroll_button (opcode 17)
+riverLibinputDeviceV1SetScrollButton :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetScrollButton c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 17 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_scroll_button_lock (opcode 18)
+riverLibinputDeviceV1SetScrollButtonLock :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetScrollButtonLock c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 18 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_dwt (opcode 19)
+riverLibinputDeviceV1SetDwt :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetDwt c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 19 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_dwtp (opcode 20)
+riverLibinputDeviceV1SetDwtp :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetDwtp c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 20 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- | river_libinput_device_v1.set_rotation (opcode 21)
+riverLibinputDeviceV1SetRotation :: Conn -> ObjectId -> Word32 -> IO ObjectId
+riverLibinputDeviceV1SetRotation c self a1 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 21 (putObj newObj <> putUint a1)
+  pure newObj
+
+-- * river_libinput_accel_config_v1 (version 1)
+
+riverLibinputAccelConfigV1Interface :: ByteString
+riverLibinputAccelConfigV1Interface = "river_libinput_accel_config_v1"
+
+riverLibinputAccelConfigV1Version :: Word32
+riverLibinputAccelConfigV1Version = 1
+
+riverLibinputAccelConfigV1ErrorInvalidArg :: Word32
+riverLibinputAccelConfigV1ErrorInvalidArg = 0
+
+riverLibinputAccelConfigV1AccelTypeFallback :: Word32
+riverLibinputAccelConfigV1AccelTypeFallback = 0
+riverLibinputAccelConfigV1AccelTypeMotion :: Word32
+riverLibinputAccelConfigV1AccelTypeMotion = 1
+riverLibinputAccelConfigV1AccelTypeScroll :: Word32
+riverLibinputAccelConfigV1AccelTypeScroll = 2
+
+-- | river_libinput_accel_config_v1.destroy (opcode 0)
+riverLibinputAccelConfigV1Destroy :: Conn -> ObjectId -> IO ()
+riverLibinputAccelConfigV1Destroy c self = do
+  sendRequest c self 0 (mempty)
+  forgetObject c self
+
+-- | river_libinput_accel_config_v1.set_points (opcode 1)
+riverLibinputAccelConfigV1SetPoints :: Conn -> ObjectId -> Word32 -> ByteString -> ByteString -> IO ObjectId
+riverLibinputAccelConfigV1SetPoints c self a1 a2 a3 = do
+  newObj <- newObject c "river_libinput_result_v1"
+  sendRequest c self 1 (putObj newObj <> putUint a1 <> putArray a2 <> putArray a3)
+  pure newObj
+
+-- * river_libinput_result_v1 (version 1)
+
+riverLibinputResultV1Interface :: ByteString
+riverLibinputResultV1Interface = "river_libinput_result_v1"
+
+riverLibinputResultV1Version :: Word32
+riverLibinputResultV1Version = 1
+
+data RiverLibinputResultV1Event
+  = RiverLibinputResultV1Success
+  | RiverLibinputResultV1Unsupported
+  | RiverLibinputResultV1Invalid
+  deriving (Show)
+
+decodeRiverLibinputResultV1Event :: Word16 -> Maybe (Get (RiverLibinputResultV1Event, [(ObjectId, ByteString)]))
+decodeRiverLibinputResultV1Event 0 = Just (pure (RiverLibinputResultV1Success, []))
+decodeRiverLibinputResultV1Event 1 = Just (pure (RiverLibinputResultV1Unsupported, []))
+decodeRiverLibinputResultV1Event 2 = Just (pure (RiverLibinputResultV1Invalid, []))
+decodeRiverLibinputResultV1Event _ = Nothing
 
