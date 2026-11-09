@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               rivermonad
-version:            0.1.0.0
+version:            0.1.0
 synopsis:           An xmonad-style tiling window manager for the river Wayland compositor
 description:
   rivermonad brings xmonad's model (StackSet, layouts, manage hooks and a
@@ -15,13 +15,22 @@ category:           System
 build-type:         Simple
 extra-doc-files:    README.md
 data-files:         examples/rivermonad.hs
-extra-source-files: protocol/*.xml, tools/gen-protocol.py, tools/regen.sh, cbits/*.c
+extra-source-files: protocol/*.xml, contrib/session/*, tools/gen-protocol.py, tools/regen.sh, cbits/*.c
+
+flag dynamic-config
+  description: Link the user configuration dynamically (-dynamic), for
+               distributions that ship Haskell libraries as shared objects
+               only, like Arch Linux.
+  default:     False
+  manual:      True
 
 common warnings
   ghc-options: -Wall -Wno-name-shadowing -Wno-orphans
 
 library
   import:           warnings
+  if flag(dynamic-config)
+    cpp-options:    -DDYNAMIC_CONFIG
   hs-source-dirs:   src
   default-language: GHC2021
   default-extensions: LambdaCase

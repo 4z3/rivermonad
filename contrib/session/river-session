@@ -3,6 +3,8 @@
 # file at this script (see rivermonad.desktop), or run it from a TTY.
 #
 # river itself then runs ~/.config/river/init, which starts rivermonad.
+# Without one, the init installed with the package is used
+# (/usr/share/rivermonad/init).
 
 # Sessions started from a display manager don't read ~/.bashrc; river,
 # rivermonad and friends are usually installed in ~/.local/bin.
@@ -16,5 +18,14 @@ for drv in /sys/class/drm/card*/device/driver; do
     *virtio*) export WLR_NO_HARDWARE_CURSORS=1 ;;
   esac
 done
+
+init="${XDG_CONFIG_HOME:-$HOME/.config}/river/init"
+if [ ! -x "$init" ] && [ $# -eq 0 ]; then
+  for dir in "$(dirname "$(readlink -f "$0")")/../share/rivermonad" /usr/share/rivermonad; do
+    if [ -x "$dir/init" ]; then
+      exec river -c "$dir/init"
+    fi
+  done
+fi
 
 exec river "$@"

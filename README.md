@@ -129,6 +129,16 @@ Customise it with a `PP` like xmonad's (`ppCurrent`, `ppHidden`, `ppTitle`,
 
 ## Installation
 
+Arch Linux and Fedora (≥ 44): build the package from
+[packaging/](packaging/README.md); it installs rivermonad, the library your
+configuration is compiled against and the login-screen session.
+
+```sh
+cd packaging/arch && makepkg -si                 # Arch
+```
+
+From source:
+
 ```sh
 sudo apt install ghc cabal-install libxkbcommon-dev   # or ghcup
 cabal update
