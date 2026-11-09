@@ -38,6 +38,7 @@ defaultConfig = XConfig
   , xcursorTheme = Nothing
   , allowTearing = True
   , input = def
+  , shadows = Nothing
   }
 
 defaultLayout :: Layout Window

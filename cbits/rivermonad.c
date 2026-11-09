@@ -3,6 +3,7 @@
  * Wayland messages with file descriptors attached (SCM_RIGHTS). */
 #define _GNU_SOURCE
 #include <errno.h>
+#include <math.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,4 +72,59 @@ int rivermonad_send_fds(int sock, const char *buf, size_t len, const int *fds, i
         sent += (size_t)n;
     }
     return 0;
+}
+
+/* Draw a soft drop shadow into a new shared-memory file, for a wl_shm
+ * buffer (ARGB8888, premultiplied, little endian = B,G,R,A in memory).
+ *
+ * The buffer is (box_w + 2*radius) x (box_h + 2*radius): the shadow of a
+ * box_w x box_h rectangle sitting at (radius, radius), fading out over
+ * `radius` pixels with a Gaussian profile. The window itself covers the
+ * box shifted by (-dx, -dy) (the shadow is drawn offset by dx, dy); that
+ * area is left transparent so translucent windows are not darkened.
+ *
+ * Returns the fd (its size is width*height*4), or -1. */
+int rivermonad_shadow_fd(int box_w, int box_h, int radius, int dx, int dy,
+                         double r, double g, double b, double opacity)
+{
+    if (box_w <= 0 || box_h <= 0 || radius < 0) return -1;
+    int w = box_w + 2 * radius, h = box_h + 2 * radius;
+    size_t size = (size_t)w * (size_t)h * 4;
+
+    int fd = memfd_create("rivermonad-shadow", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+    if (fd < 0) return -1;
+    if (ftruncate(fd, (off_t)size) < 0) { close(fd); return -1; }
+    unsigned char *px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (px == MAP_FAILED) { close(fd); return -1; }
+
+    /* alpha by squared distance to the box, for d^2 in [0, radius^2] */
+    int r2max = radius * radius;
+    unsigned char *lut = malloc((size_t)r2max + 1);
+    if (!lut) { munmap(px, size); close(fd); return -1; }
+    double sigma = radius > 0 ? radius / 2.5 : 1.0;
+    for (int d2 = 0; d2 <= r2max; d2++) {
+        double a = opacity * exp(-(double)d2 / (2.0 * sigma * sigma));
+        lut[d2] = (unsigned char)(a * 255.0 + 0.5);
+    }
+
+    int x0 = radius, x1 = radius + box_w - 1, y0 = radius, y1 = radius + box_h - 1;
+    /* the window, in buffer coordinates */
+    int wx0 = radius - dx, wx1 = wx0 + box_w - 1, wy0 = radius - dy, wy1 = wy0 + box_h - 1;
+    for (int y = 0; y < h; y++) {
+        int ddy = y < y0 ? y0 - y : (y > y1 ? y - y1 : 0);
+        unsigned char *row = px + (size_t)y * (size_t)w * 4;
+        for (int x = 0; x < w; x++) {
+            int ddx = x < x0 ? x0 - x : (x > x1 ? x - x1 : 0);
+            int d2 = ddx * ddx + ddy * ddy;
+            unsigned char a = (d2 > r2max) ? 0 : lut[d2];
+            if (x >= wx0 && x <= wx1 && y >= wy0 && y <= wy1) a = 0;
+            row[4 * x + 0] = (unsigned char)(b * a + 0.5);
+            row[4 * x + 1] = (unsigned char)(g * a + 0.5);
+            row[4 * x + 2] = (unsigned char)(r * a + 0.5);
+            row[4 * x + 3] = a;
+        }
+    }
+    free(lut);
+    munmap(px, size);
+    return fd;
 }

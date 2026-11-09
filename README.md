@@ -52,6 +52,14 @@ the stable `river-window-management-v1` protocol. Because of this split:
   (`wp_tearing_control`) makes its output present without vsync, back to
   vsync when it leaves; `allowTearing = False` turns it off. Pair it with
   variable refresh rate (`adaptive_sync on` in kanshi) on real hardware
+* drop shadows, drawn by rivermonad as river decorations below windows
+  (only under floating windows unless `shadowTiled = True`; none in
+  fullscreen):
+
+  ```haskell
+  , shadows = Just def { shadowRadius = 18, shadowOffset = (0, 5)
+                       , shadowColor = "#000000", shadowOpacity = 0.5 }
+  ```
 * layer-shell (waybar, fuzzel, …), with the space taken by bars excluded
 * `~/.config/rivermonad/rivermonad.hs` recompiled with ghc; `mod-q`
   recompiles and restarts while keeping each window's workspace, stack

@@ -35,6 +35,7 @@ import Rivermonad.Input (currentKeyboardLayout, handleInputEvent, nextKeyboardLa
 import qualified Rivermonad.JSON as J
 import Rivermonad.Layout (ChangeLayout (..), JumpToLayout (..))
 import Rivermonad.Operations
+import Rivermonad.Shadows (drawShadows, dropShadow, handleShadowEvent, syncShadows)
 import qualified Rivermonad.StackSet as W
 import Rivermonad.Wayland.Protocol
 import Rivermonad.Wayland.Wire
@@ -113,7 +114,8 @@ defaultHandler ev = case ev of
                                   , siFocused = if focused then siFocused si else Nothing }
                           else si)
   ev' -> do
-    void (handleInputEvent ev')
+    mine <- handleShadowEvent ev'
+    unless mine (void (handleInputEvent ev'))
     -- Layout switches don't start a manage sequence: publish them now so
     -- bars follow (publishState only sends when something changed).
     case ev' of
@@ -208,6 +210,7 @@ whenFloating w a = do
 windowClosed :: Window -> X ()
 windowClosed w = do
   info <- gets (M.lookup w . windowInfo)
+  dropShadow w
   withConn $ \c -> do
     forM_ info $ \i -> riverNodeV1Destroy c (wiNode i)
     riverWindowV1Destroy c w
@@ -574,6 +577,7 @@ applyManage = do
   -- Remember where the pointer was when this layout was applied.
   modifySeats (\si -> si { siPosAtLayout = siPointerPos si })
   updatePresentation
+  catchX syncShadows (pure ())
 
 -- | Tearing: an output presents asynchronously (no vsync) only while a
 -- window that asked for it is fullscreen on it and shown; everything else
@@ -604,6 +608,7 @@ updatePresentation = do
 onRenderStart :: X ()
 onRenderStart = do
   catchX renderBody (pure ())
+  catchX drawShadows (pure ())
   g <- asks globals
   withConn (\c -> riverWindowManagerV1RenderFinish c (gWm g))
 

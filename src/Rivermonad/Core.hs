@@ -19,6 +19,7 @@ module Rivermonad.Core
   , XConfig (..), Default (..)
   , InputConfig (..), KeyboardConfig (..), PointerConfig (..), AccelProfile (..)
   , InputDev (..), XkbKb (..), LiDev (..), KeymapState (..)
+  , ShadowConfig (..), Shadow (..)
     -- * The X monad
   , X, XConf (..), XState (..), RationalRectS, runX, io, catchX, userCode, userCodeDef
   , withWindowSet, gets, modify, asks, ask, get, put
@@ -209,6 +210,8 @@ data Globals = Globals
   , gInputManager :: !(Maybe ObjectId)  -- ^ river_input_manager_v1
   , gXkbConfig    :: !(Maybe ObjectId)  -- ^ river_xkb_config_v1
   , gLibinput     :: !(Maybe ObjectId)  -- ^ river_libinput_config_v1
+  , gCompositor   :: !(Maybe ObjectId)  -- ^ wl_compositor (surfaces for decorations)
+  , gShm          :: !(Maybe ObjectId)  -- ^ wl_shm (their buffers)
   }
 
 -- | Thrown to unwind the main loop so the new binary can be exec'd.
@@ -261,6 +264,7 @@ data XConfig = XConfig
   , xcursorTheme       :: !(Maybe (String, Int))
   , allowTearing       :: !Bool  -- ^ let fullscreen windows that ask for it (games) tear for lower latency
   , input              :: !InputConfig  -- ^ keyboard layout, key repeat, touchpad and mouse
+  , shadows            :: !(Maybe ShadowConfig)  -- ^ drop shadows under windows; Nothing = none
   }
 
 ------------------------------------------------------------------------------
@@ -341,6 +345,30 @@ data KeymapState
   | KeymapFailed
 
 ------------------------------------------------------------------------------
+-- Shadows
+
+-- | Drop shadows, drawn by rivermonad as river decorations below windows.
+data ShadowConfig = ShadowConfig
+  { shadowRadius  :: !Int          -- ^ blur radius in pixels
+  , shadowOffset  :: !(Int, Int)   -- ^ (x, y); (0, 4) puts the light above
+  , shadowColor   :: !String       -- ^ "#rrggbb"
+  , shadowOpacity :: !Double       -- ^ 0..1 at the window's edge
+  , shadowTiled   :: !Bool         -- ^ also under tiled windows (off: they
+                                   --   would darken their neighbours)
+  }
+
+instance Default ShadowConfig where
+  def = ShadowConfig 18 (0, 5) "#000000" 0.5 False
+
+-- | A window's shadow: a wl_surface with the river_decoration_v1 role.
+data Shadow = Shadow
+  { shSurface    :: !ObjectId
+  , shDecoration :: !ObjectId
+  , shDrawn      :: !(Maybe (Int, Int))  -- ^ box size it was drawn for
+  , shBuffer     :: !(Maybe ObjectId)
+  }
+
+------------------------------------------------------------------------------
 -- The X monad
 
 data XConf = XConf
@@ -380,6 +408,8 @@ data XState = XState
   , xkbKeyboards    :: !(M.Map ObjectId XkbKb)
   , libinputDevices :: !(M.Map ObjectId LiDev)
   , keymapState     :: !KeymapState
+  , shadowMap       :: !(M.Map Window Shadow)
+  , retiredBuffers  :: !(S.Set ObjectId)  -- ^ replaced shadow buffers, destroyed on release
   }
 
 -- | Serializable float geometry used by the restart state file.

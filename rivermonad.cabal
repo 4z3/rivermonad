@@ -51,6 +51,7 @@ library
     Rivermonad.ManageHook
     Rivermonad.Operations
     Rivermonad.Recompile
+    Rivermonad.Shadows
     Rivermonad.StackSet
     Rivermonad.Status
     Rivermonad.Util.EZConfig
@@ -62,6 +63,7 @@ library
   other-modules:    Paths_rivermonad
   c-sources:        cbits/rivermonad.c
   pkgconfig-depends: xkbcommon
+  extra-libraries:  m
   autogen-modules:  Paths_rivermonad
   build-depends:
       base        >=4.16 && <5

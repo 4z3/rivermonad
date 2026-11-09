@@ -16,6 +16,9 @@ data Event
   | EvWlRegistry !ObjectId !WlRegistryEvent
   | EvWlCallback !ObjectId !WlCallbackEvent
   | EvWlOutput !ObjectId !WlOutputEvent
+  | EvWlShm !ObjectId !WlShmEvent
+  | EvWlBuffer !ObjectId !WlBufferEvent
+  | EvWlSurface !ObjectId !WlSurfaceEvent
   | EvRiverWindowManagerV1 !ObjectId !RiverWindowManagerV1Event
   | EvRiverWindowV1 !ObjectId !RiverWindowV1Event
   | EvRiverOutputV1 !ObjectId !RiverOutputV1Event
@@ -42,6 +45,9 @@ decodeEvent "wl_display" o op = fmap (\(e, ns) -> (EvWlDisplay o e, ns)) <$> dec
 decodeEvent "wl_registry" o op = fmap (\(e, ns) -> (EvWlRegistry o e, ns)) <$> decodeWlRegistryEvent op
 decodeEvent "wl_callback" o op = fmap (\(e, ns) -> (EvWlCallback o e, ns)) <$> decodeWlCallbackEvent op
 decodeEvent "wl_output" o op = fmap (\(e, ns) -> (EvWlOutput o e, ns)) <$> decodeWlOutputEvent op
+decodeEvent "wl_shm" o op = fmap (\(e, ns) -> (EvWlShm o e, ns)) <$> decodeWlShmEvent op
+decodeEvent "wl_buffer" o op = fmap (\(e, ns) -> (EvWlBuffer o e, ns)) <$> decodeWlBufferEvent op
+decodeEvent "wl_surface" o op = fmap (\(e, ns) -> (EvWlSurface o e, ns)) <$> decodeWlSurfaceEvent op
 decodeEvent "river_window_manager_v1" o op = fmap (\(e, ns) -> (EvRiverWindowManagerV1 o e, ns)) <$> decodeRiverWindowManagerV1Event op
 decodeEvent "river_window_v1" o op = fmap (\(e, ns) -> (EvRiverWindowV1 o e, ns)) <$> decodeRiverWindowV1Event op
 decodeEvent "river_output_v1" o op = fmap (\(e, ns) -> (EvRiverOutputV1 o e, ns)) <$> decodeRiverOutputV1Event op
@@ -165,6 +171,506 @@ wlOutputRelease :: Conn -> ObjectId -> IO ()
 wlOutputRelease c self = do
   sendRequest c self 0 (mempty)
   forgetObject c self
+
+-- * wl_compositor (version 4)
+
+wlCompositorInterface :: ByteString
+wlCompositorInterface = "wl_compositor"
+
+wlCompositorVersion :: Word32
+wlCompositorVersion = 4
+
+-- | wl_compositor.create_surface (opcode 0)
+wlCompositorCreateSurface :: Conn -> ObjectId -> IO ObjectId
+wlCompositorCreateSurface c self = do
+  newObj <- newObject c "wl_surface"
+  sendRequest c self 0 (putObj newObj)
+  pure newObj
+
+-- | wl_compositor.create_region (opcode 1)
+wlCompositorCreateRegion :: Conn -> ObjectId -> IO ObjectId
+wlCompositorCreateRegion c self = do
+  newObj <- newObject c "wl_region"
+  sendRequest c self 1 (putObj newObj)
+  pure newObj
+
+-- * wl_shm_pool (version 1)
+
+wlShmPoolInterface :: ByteString
+wlShmPoolInterface = "wl_shm_pool"
+
+wlShmPoolVersion :: Word32
+wlShmPoolVersion = 1
+
+wlShmPoolErrorInvalidFormat :: Word32
+wlShmPoolErrorInvalidFormat = 0
+wlShmPoolErrorInvalidStride :: Word32
+wlShmPoolErrorInvalidStride = 1
+
+-- | wl_shm_pool.create_buffer (opcode 0)
+wlShmPoolCreateBuffer :: Conn -> ObjectId -> Int32 -> Int32 -> Int32 -> Int32 -> Word32 -> IO ObjectId
+wlShmPoolCreateBuffer c self a1 a2 a3 a4 a5 = do
+  newObj <- newObject c "wl_buffer"
+  sendRequest c self 0 (putObj newObj <> putInt a1 <> putInt a2 <> putInt a3 <> putInt a4 <> putUint a5)
+  pure newObj
+
+-- | wl_shm_pool.destroy (opcode 1)
+wlShmPoolDestroy :: Conn -> ObjectId -> IO ()
+wlShmPoolDestroy c self = do
+  sendRequest c self 1 (mempty)
+  forgetObject c self
+
+-- | wl_shm_pool.resize (opcode 2)
+wlShmPoolResize :: Conn -> ObjectId -> Int32 -> IO ()
+wlShmPoolResize c self a0 = sendRequest c self 2 (putInt a0)
+
+-- * wl_shm (version 1)
+
+wlShmInterface :: ByteString
+wlShmInterface = "wl_shm"
+
+wlShmVersion :: Word32
+wlShmVersion = 1
+
+wlShmErrorInvalidFormat :: Word32
+wlShmErrorInvalidFormat = 0
+wlShmErrorInvalidStride :: Word32
+wlShmErrorInvalidStride = 1
+wlShmErrorInvalidFd :: Word32
+wlShmErrorInvalidFd = 2
+
+wlShmFormatArgb8888 :: Word32
+wlShmFormatArgb8888 = 0
+wlShmFormatXrgb8888 :: Word32
+wlShmFormatXrgb8888 = 1
+wlShmFormatC8 :: Word32
+wlShmFormatC8 = 0x20203843
+wlShmFormatRgb332 :: Word32
+wlShmFormatRgb332 = 0x38424752
+wlShmFormatBgr233 :: Word32
+wlShmFormatBgr233 = 0x38524742
+wlShmFormatXrgb4444 :: Word32
+wlShmFormatXrgb4444 = 0x32315258
+wlShmFormatXbgr4444 :: Word32
+wlShmFormatXbgr4444 = 0x32314258
+wlShmFormatRgbx4444 :: Word32
+wlShmFormatRgbx4444 = 0x32315852
+wlShmFormatBgrx4444 :: Word32
+wlShmFormatBgrx4444 = 0x32315842
+wlShmFormatArgb4444 :: Word32
+wlShmFormatArgb4444 = 0x32315241
+wlShmFormatAbgr4444 :: Word32
+wlShmFormatAbgr4444 = 0x32314241
+wlShmFormatRgba4444 :: Word32
+wlShmFormatRgba4444 = 0x32314152
+wlShmFormatBgra4444 :: Word32
+wlShmFormatBgra4444 = 0x32314142
+wlShmFormatXrgb1555 :: Word32
+wlShmFormatXrgb1555 = 0x35315258
+wlShmFormatXbgr1555 :: Word32
+wlShmFormatXbgr1555 = 0x35314258
+wlShmFormatRgbx5551 :: Word32
+wlShmFormatRgbx5551 = 0x35315852
+wlShmFormatBgrx5551 :: Word32
+wlShmFormatBgrx5551 = 0x35315842
+wlShmFormatArgb1555 :: Word32
+wlShmFormatArgb1555 = 0x35315241
+wlShmFormatAbgr1555 :: Word32
+wlShmFormatAbgr1555 = 0x35314241
+wlShmFormatRgba5551 :: Word32
+wlShmFormatRgba5551 = 0x35314152
+wlShmFormatBgra5551 :: Word32
+wlShmFormatBgra5551 = 0x35314142
+wlShmFormatRgb565 :: Word32
+wlShmFormatRgb565 = 0x36314752
+wlShmFormatBgr565 :: Word32
+wlShmFormatBgr565 = 0x36314742
+wlShmFormatRgb888 :: Word32
+wlShmFormatRgb888 = 0x34324752
+wlShmFormatBgr888 :: Word32
+wlShmFormatBgr888 = 0x34324742
+wlShmFormatXbgr8888 :: Word32
+wlShmFormatXbgr8888 = 0x34324258
+wlShmFormatRgbx8888 :: Word32
+wlShmFormatRgbx8888 = 0x34325852
+wlShmFormatBgrx8888 :: Word32
+wlShmFormatBgrx8888 = 0x34325842
+wlShmFormatAbgr8888 :: Word32
+wlShmFormatAbgr8888 = 0x34324241
+wlShmFormatRgba8888 :: Word32
+wlShmFormatRgba8888 = 0x34324152
+wlShmFormatBgra8888 :: Word32
+wlShmFormatBgra8888 = 0x34324142
+wlShmFormatXrgb2101010 :: Word32
+wlShmFormatXrgb2101010 = 0x30335258
+wlShmFormatXbgr2101010 :: Word32
+wlShmFormatXbgr2101010 = 0x30334258
+wlShmFormatRgbx1010102 :: Word32
+wlShmFormatRgbx1010102 = 0x30335852
+wlShmFormatBgrx1010102 :: Word32
+wlShmFormatBgrx1010102 = 0x30335842
+wlShmFormatArgb2101010 :: Word32
+wlShmFormatArgb2101010 = 0x30335241
+wlShmFormatAbgr2101010 :: Word32
+wlShmFormatAbgr2101010 = 0x30334241
+wlShmFormatRgba1010102 :: Word32
+wlShmFormatRgba1010102 = 0x30334152
+wlShmFormatBgra1010102 :: Word32
+wlShmFormatBgra1010102 = 0x30334142
+wlShmFormatYuyv :: Word32
+wlShmFormatYuyv = 0x56595559
+wlShmFormatYvyu :: Word32
+wlShmFormatYvyu = 0x55595659
+wlShmFormatUyvy :: Word32
+wlShmFormatUyvy = 0x59565955
+wlShmFormatVyuy :: Word32
+wlShmFormatVyuy = 0x59555956
+wlShmFormatAyuv :: Word32
+wlShmFormatAyuv = 0x56555941
+wlShmFormatNv12 :: Word32
+wlShmFormatNv12 = 0x3231564e
+wlShmFormatNv21 :: Word32
+wlShmFormatNv21 = 0x3132564e
+wlShmFormatNv16 :: Word32
+wlShmFormatNv16 = 0x3631564e
+wlShmFormatNv61 :: Word32
+wlShmFormatNv61 = 0x3136564e
+wlShmFormatYuv410 :: Word32
+wlShmFormatYuv410 = 0x39565559
+wlShmFormatYvu410 :: Word32
+wlShmFormatYvu410 = 0x39555659
+wlShmFormatYuv411 :: Word32
+wlShmFormatYuv411 = 0x31315559
+wlShmFormatYvu411 :: Word32
+wlShmFormatYvu411 = 0x31315659
+wlShmFormatYuv420 :: Word32
+wlShmFormatYuv420 = 0x32315559
+wlShmFormatYvu420 :: Word32
+wlShmFormatYvu420 = 0x32315659
+wlShmFormatYuv422 :: Word32
+wlShmFormatYuv422 = 0x36315559
+wlShmFormatYvu422 :: Word32
+wlShmFormatYvu422 = 0x36315659
+wlShmFormatYuv444 :: Word32
+wlShmFormatYuv444 = 0x34325559
+wlShmFormatYvu444 :: Word32
+wlShmFormatYvu444 = 0x34325659
+wlShmFormatR8 :: Word32
+wlShmFormatR8 = 0x20203852
+wlShmFormatR16 :: Word32
+wlShmFormatR16 = 0x20363152
+wlShmFormatRg88 :: Word32
+wlShmFormatRg88 = 0x38384752
+wlShmFormatGr88 :: Word32
+wlShmFormatGr88 = 0x38385247
+wlShmFormatRg1616 :: Word32
+wlShmFormatRg1616 = 0x32334752
+wlShmFormatGr1616 :: Word32
+wlShmFormatGr1616 = 0x32335247
+wlShmFormatXrgb16161616f :: Word32
+wlShmFormatXrgb16161616f = 0x48345258
+wlShmFormatXbgr16161616f :: Word32
+wlShmFormatXbgr16161616f = 0x48344258
+wlShmFormatArgb16161616f :: Word32
+wlShmFormatArgb16161616f = 0x48345241
+wlShmFormatAbgr16161616f :: Word32
+wlShmFormatAbgr16161616f = 0x48344241
+wlShmFormatXyuv8888 :: Word32
+wlShmFormatXyuv8888 = 0x56555958
+wlShmFormatVuy888 :: Word32
+wlShmFormatVuy888 = 0x34325556
+wlShmFormatVuy101010 :: Word32
+wlShmFormatVuy101010 = 0x30335556
+wlShmFormatY210 :: Word32
+wlShmFormatY210 = 0x30313259
+wlShmFormatY212 :: Word32
+wlShmFormatY212 = 0x32313259
+wlShmFormatY216 :: Word32
+wlShmFormatY216 = 0x36313259
+wlShmFormatY410 :: Word32
+wlShmFormatY410 = 0x30313459
+wlShmFormatY412 :: Word32
+wlShmFormatY412 = 0x32313459
+wlShmFormatY416 :: Word32
+wlShmFormatY416 = 0x36313459
+wlShmFormatXvyu2101010 :: Word32
+wlShmFormatXvyu2101010 = 0x30335658
+wlShmFormatXvyu1216161616 :: Word32
+wlShmFormatXvyu1216161616 = 0x36335658
+wlShmFormatXvyu16161616 :: Word32
+wlShmFormatXvyu16161616 = 0x38345658
+wlShmFormatY0l0 :: Word32
+wlShmFormatY0l0 = 0x304c3059
+wlShmFormatX0l0 :: Word32
+wlShmFormatX0l0 = 0x304c3058
+wlShmFormatY0l2 :: Word32
+wlShmFormatY0l2 = 0x324c3059
+wlShmFormatX0l2 :: Word32
+wlShmFormatX0l2 = 0x324c3058
+wlShmFormatYuv4208bit :: Word32
+wlShmFormatYuv4208bit = 0x38305559
+wlShmFormatYuv42010bit :: Word32
+wlShmFormatYuv42010bit = 0x30315559
+wlShmFormatXrgb8888A8 :: Word32
+wlShmFormatXrgb8888A8 = 0x38415258
+wlShmFormatXbgr8888A8 :: Word32
+wlShmFormatXbgr8888A8 = 0x38414258
+wlShmFormatRgbx8888A8 :: Word32
+wlShmFormatRgbx8888A8 = 0x38415852
+wlShmFormatBgrx8888A8 :: Word32
+wlShmFormatBgrx8888A8 = 0x38415842
+wlShmFormatRgb888A8 :: Word32
+wlShmFormatRgb888A8 = 0x38413852
+wlShmFormatBgr888A8 :: Word32
+wlShmFormatBgr888A8 = 0x38413842
+wlShmFormatRgb565A8 :: Word32
+wlShmFormatRgb565A8 = 0x38413552
+wlShmFormatBgr565A8 :: Word32
+wlShmFormatBgr565A8 = 0x38413542
+wlShmFormatNv24 :: Word32
+wlShmFormatNv24 = 0x3432564e
+wlShmFormatNv42 :: Word32
+wlShmFormatNv42 = 0x3234564e
+wlShmFormatP210 :: Word32
+wlShmFormatP210 = 0x30313250
+wlShmFormatP010 :: Word32
+wlShmFormatP010 = 0x30313050
+wlShmFormatP012 :: Word32
+wlShmFormatP012 = 0x32313050
+wlShmFormatP016 :: Word32
+wlShmFormatP016 = 0x36313050
+wlShmFormatAxbxgxrx106106106106 :: Word32
+wlShmFormatAxbxgxrx106106106106 = 0x30314241
+wlShmFormatNv15 :: Word32
+wlShmFormatNv15 = 0x3531564e
+wlShmFormatQ410 :: Word32
+wlShmFormatQ410 = 0x30313451
+wlShmFormatQ401 :: Word32
+wlShmFormatQ401 = 0x31303451
+wlShmFormatXrgb16161616 :: Word32
+wlShmFormatXrgb16161616 = 0x38345258
+wlShmFormatXbgr16161616 :: Word32
+wlShmFormatXbgr16161616 = 0x38344258
+wlShmFormatArgb16161616 :: Word32
+wlShmFormatArgb16161616 = 0x38345241
+wlShmFormatAbgr16161616 :: Word32
+wlShmFormatAbgr16161616 = 0x38344241
+wlShmFormatC1 :: Word32
+wlShmFormatC1 = 0x20203143
+wlShmFormatC2 :: Word32
+wlShmFormatC2 = 0x20203243
+wlShmFormatC4 :: Word32
+wlShmFormatC4 = 0x20203443
+wlShmFormatD1 :: Word32
+wlShmFormatD1 = 0x20203144
+wlShmFormatD2 :: Word32
+wlShmFormatD2 = 0x20203244
+wlShmFormatD4 :: Word32
+wlShmFormatD4 = 0x20203444
+wlShmFormatD8 :: Word32
+wlShmFormatD8 = 0x20203844
+wlShmFormatR1 :: Word32
+wlShmFormatR1 = 0x20203152
+wlShmFormatR2 :: Word32
+wlShmFormatR2 = 0x20203252
+wlShmFormatR4 :: Word32
+wlShmFormatR4 = 0x20203452
+wlShmFormatR10 :: Word32
+wlShmFormatR10 = 0x20303152
+wlShmFormatR12 :: Word32
+wlShmFormatR12 = 0x20323152
+wlShmFormatAvuy8888 :: Word32
+wlShmFormatAvuy8888 = 0x59555641
+wlShmFormatXvuy8888 :: Word32
+wlShmFormatXvuy8888 = 0x59555658
+wlShmFormatP030 :: Word32
+wlShmFormatP030 = 0x30333050
+wlShmFormatRgb161616 :: Word32
+wlShmFormatRgb161616 = 0x38344752
+wlShmFormatBgr161616 :: Word32
+wlShmFormatBgr161616 = 0x38344742
+wlShmFormatR16f :: Word32
+wlShmFormatR16f = 0x48202052
+wlShmFormatGr1616f :: Word32
+wlShmFormatGr1616f = 0x48205247
+wlShmFormatBgr161616f :: Word32
+wlShmFormatBgr161616f = 0x48524742
+wlShmFormatR32f :: Word32
+wlShmFormatR32f = 0x46202052
+wlShmFormatGr3232f :: Word32
+wlShmFormatGr3232f = 0x46205247
+wlShmFormatBgr323232f :: Word32
+wlShmFormatBgr323232f = 0x46524742
+wlShmFormatAbgr32323232f :: Word32
+wlShmFormatAbgr32323232f = 0x46384241
+wlShmFormatNv20 :: Word32
+wlShmFormatNv20 = 0x3032564e
+wlShmFormatNv30 :: Word32
+wlShmFormatNv30 = 0x3033564e
+wlShmFormatS010 :: Word32
+wlShmFormatS010 = 0x30313053
+wlShmFormatS210 :: Word32
+wlShmFormatS210 = 0x30313253
+wlShmFormatS410 :: Word32
+wlShmFormatS410 = 0x30313453
+wlShmFormatS012 :: Word32
+wlShmFormatS012 = 0x32313053
+wlShmFormatS212 :: Word32
+wlShmFormatS212 = 0x32313253
+wlShmFormatS412 :: Word32
+wlShmFormatS412 = 0x32313453
+wlShmFormatS016 :: Word32
+wlShmFormatS016 = 0x36313053
+wlShmFormatS216 :: Word32
+wlShmFormatS216 = 0x36313253
+wlShmFormatS416 :: Word32
+wlShmFormatS416 = 0x36313453
+wlShmFormatXvuy2101010 :: Word32
+wlShmFormatXvuy2101010 = 0x30335958
+wlShmFormatP230 :: Word32
+wlShmFormatP230 = 0x30333250
+wlShmFormatT430 :: Word32
+wlShmFormatT430 = 0x30333454
+wlShmFormatY8 :: Word32
+wlShmFormatY8 = 0x59455247
+wlShmFormatXyyy2101010 :: Word32
+wlShmFormatXyyy2101010 = 0x34415059
+
+data WlShmEvent
+  = WlShmFormat !Word32
+  deriving (Show)
+
+decodeWlShmEvent :: Word16 -> Maybe (Get (WlShmEvent, [(ObjectId, ByteString)]))
+decodeWlShmEvent 0 = Just (do { a0 <- getUint; pure (WlShmFormat a0, []) })
+decodeWlShmEvent _ = Nothing
+
+-- | wl_shm.create_pool (opcode 0)
+wlShmCreatePool :: Conn -> ObjectId -> Fd -> Int32 -> IO ObjectId
+wlShmCreatePool c self a1 a2 = do
+  newObj <- newObject c "wl_shm_pool"
+  queueFd c a1
+  sendRequest c self 0 (putObj newObj <> putInt a2)
+  pure newObj
+
+-- * wl_buffer (version 1)
+
+wlBufferInterface :: ByteString
+wlBufferInterface = "wl_buffer"
+
+wlBufferVersion :: Word32
+wlBufferVersion = 1
+
+data WlBufferEvent
+  = WlBufferRelease
+  deriving (Show)
+
+decodeWlBufferEvent :: Word16 -> Maybe (Get (WlBufferEvent, [(ObjectId, ByteString)]))
+decodeWlBufferEvent 0 = Just (pure (WlBufferRelease, []))
+decodeWlBufferEvent _ = Nothing
+
+-- | wl_buffer.destroy (opcode 0)
+wlBufferDestroy :: Conn -> ObjectId -> IO ()
+wlBufferDestroy c self = do
+  sendRequest c self 0 (mempty)
+  forgetObject c self
+
+-- * wl_surface (version 4)
+
+wlSurfaceInterface :: ByteString
+wlSurfaceInterface = "wl_surface"
+
+wlSurfaceVersion :: Word32
+wlSurfaceVersion = 4
+
+wlSurfaceErrorInvalidScale :: Word32
+wlSurfaceErrorInvalidScale = 0
+wlSurfaceErrorInvalidTransform :: Word32
+wlSurfaceErrorInvalidTransform = 1
+wlSurfaceErrorInvalidSize :: Word32
+wlSurfaceErrorInvalidSize = 2
+wlSurfaceErrorInvalidOffset :: Word32
+wlSurfaceErrorInvalidOffset = 3
+wlSurfaceErrorDefunctRoleObject :: Word32
+wlSurfaceErrorDefunctRoleObject = 4
+wlSurfaceErrorNoBuffer :: Word32
+wlSurfaceErrorNoBuffer = 5
+
+data WlSurfaceEvent
+  = WlSurfaceEnter !ObjectId
+  | WlSurfaceLeave !ObjectId
+  deriving (Show)
+
+decodeWlSurfaceEvent :: Word16 -> Maybe (Get (WlSurfaceEvent, [(ObjectId, ByteString)]))
+decodeWlSurfaceEvent 0 = Just (do { a0 <- getObj; pure (WlSurfaceEnter a0, []) })
+decodeWlSurfaceEvent 1 = Just (do { a0 <- getObj; pure (WlSurfaceLeave a0, []) })
+decodeWlSurfaceEvent _ = Nothing
+
+-- | wl_surface.destroy (opcode 0)
+wlSurfaceDestroy :: Conn -> ObjectId -> IO ()
+wlSurfaceDestroy c self = do
+  sendRequest c self 0 (mempty)
+  forgetObject c self
+
+-- | wl_surface.attach (opcode 1)
+wlSurfaceAttach :: Conn -> ObjectId -> ObjectId -> Int32 -> Int32 -> IO ()
+wlSurfaceAttach c self a0 a1 a2 = sendRequest c self 1 (putObj a0 <> putInt a1 <> putInt a2)
+
+-- | wl_surface.damage (opcode 2)
+wlSurfaceDamage :: Conn -> ObjectId -> Int32 -> Int32 -> Int32 -> Int32 -> IO ()
+wlSurfaceDamage c self a0 a1 a2 a3 = sendRequest c self 2 (putInt a0 <> putInt a1 <> putInt a2 <> putInt a3)
+
+-- | wl_surface.frame (opcode 3)
+wlSurfaceFrame :: Conn -> ObjectId -> IO ObjectId
+wlSurfaceFrame c self = do
+  newObj <- newObject c "wl_callback"
+  sendRequest c self 3 (putObj newObj)
+  pure newObj
+
+-- | wl_surface.set_opaque_region (opcode 4)
+wlSurfaceSetOpaqueRegion :: Conn -> ObjectId -> ObjectId -> IO ()
+wlSurfaceSetOpaqueRegion c self a0 = sendRequest c self 4 (putObj a0)
+
+-- | wl_surface.set_input_region (opcode 5)
+wlSurfaceSetInputRegion :: Conn -> ObjectId -> ObjectId -> IO ()
+wlSurfaceSetInputRegion c self a0 = sendRequest c self 5 (putObj a0)
+
+-- | wl_surface.commit (opcode 6)
+wlSurfaceCommit :: Conn -> ObjectId -> IO ()
+wlSurfaceCommit c self = sendRequest c self 6 (mempty)
+
+-- | wl_surface.set_buffer_transform (opcode 7)
+wlSurfaceSetBufferTransform :: Conn -> ObjectId -> Int32 -> IO ()
+wlSurfaceSetBufferTransform c self a0 = sendRequest c self 7 (putInt a0)
+
+-- | wl_surface.set_buffer_scale (opcode 8)
+wlSurfaceSetBufferScale :: Conn -> ObjectId -> Int32 -> IO ()
+wlSurfaceSetBufferScale c self a0 = sendRequest c self 8 (putInt a0)
+
+-- | wl_surface.damage_buffer (opcode 9)
+wlSurfaceDamageBuffer :: Conn -> ObjectId -> Int32 -> Int32 -> Int32 -> Int32 -> IO ()
+wlSurfaceDamageBuffer c self a0 a1 a2 a3 = sendRequest c self 9 (putInt a0 <> putInt a1 <> putInt a2 <> putInt a3)
+
+-- * wl_region (version 1)
+
+wlRegionInterface :: ByteString
+wlRegionInterface = "wl_region"
+
+wlRegionVersion :: Word32
+wlRegionVersion = 1
+
+-- | wl_region.destroy (opcode 0)
+wlRegionDestroy :: Conn -> ObjectId -> IO ()
+wlRegionDestroy c self = do
+  sendRequest c self 0 (mempty)
+  forgetObject c self
+
+-- | wl_region.add (opcode 1)
+wlRegionAdd :: Conn -> ObjectId -> Int32 -> Int32 -> Int32 -> Int32 -> IO ()
+wlRegionAdd c self a0 a1 a2 a3 = sendRequest c self 1 (putInt a0 <> putInt a1 <> putInt a2 <> putInt a3)
+
+-- | wl_region.subtract (opcode 2)
+wlRegionSubtract :: Conn -> ObjectId -> Int32 -> Int32 -> Int32 -> Int32 -> IO ()
+wlRegionSubtract c self a0 a1 a2 a3 = sendRequest c self 2 (putInt a0 <> putInt a1 <> putInt a2 <> putInt a3)
 
 -- * river_window_manager_v1 (version 6)
 

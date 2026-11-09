@@ -127,6 +127,8 @@ runWM cfg = do
   mim <- bindG riverInputManagerV1Interface riverInputManagerV1Version
   mxc <- bindG riverXkbConfigV1Interface riverXkbConfigV1Version
   mli <- bindG riverLibinputConfigV1Interface riverLibinputConfigV1Version
+  mcomp <- bindG wlCompositorInterface wlCompositorVersion
+  mshm <- bindG wlShmInterface wlShmVersion
   (wm, wmv) <- maybe (die' "river_window_manager_v1 not advertised: is this river >= 0.4?") pure mwm
   (xkb, _) <- maybe (die' "river_xkb_bindings_v1 not advertised") pure mxkb
   flush c
@@ -142,7 +144,8 @@ runWM cfg = do
   restored <- loadRestartState
   ipcSrv <- startIPCServer ch
   let g = Globals { gRegistry = registry, gWm = wm, gWmVersion = fromIntegral wmv, gXkb = xkb, gLayerShell = fst <$> mls
-                  , gInputManager = fst <$> mim, gXkbConfig = fst <$> mxc, gLibinput = fst <$> mli }
+                  , gInputManager = fst <$> mim, gXkbConfig = fst <$> mxc, gLibinput = fst <$> mli
+                  , gCompositor = fst <$> mcomp, gShm = fst <$> mshm }
       xconf = XConf { config = cfg, conn = c, globals = g, inputs = ch
                     , ipcPublish = maybe (const (pure ())) publishIPC ipcSrv }
       ws0 = applyRestoredLayouts (layoutHook cfg) (rsLayouts restored)
@@ -159,7 +162,7 @@ runWM cfg = do
         , registryGlobals = M.fromList [ (n, (i, v)) | (n, i, v) <- globalsList ]
         , loggingOut = Nothing, layerDefault = Nothing
         , inputDevices = M.empty, xkbKeyboards = M.empty, libinputDevices = M.empty
-        , keymapState = NoKeymap }
+        , keymapState = NoKeymap, shadowMap = M.empty, retiredBuffers = S.empty }
 
   debug <- maybe False (`notElem` ["", "0"]) <$> lookupEnv "RIVERMONAD_DEBUG"
   r <- E.try (runX xconf st0 (mainLoop debug c ch))

@@ -31,6 +31,7 @@ myConfig = def
     -- US keys plus Spanish with AltGr (the right Option key on a Mac):
     -- AltGr+n = ñ, AltGr+' then a vowel = á é í ó ú, AltGr+? = ¿, AltGr+1 = ¡
   , input              = def { keyboard = def { kbLayout = "us", kbVariant = "altgr-intl" } }
+  , shadows            = Just def          -- drop shadows under floating windows
   , startupHook        = do
       spawnOnce "waymobar"
       spawnOnce "mako"
