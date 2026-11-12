@@ -16,6 +16,7 @@ module Rivermonad.Engine
 import qualified Control.Exception as E
 import Control.Monad (forM, forM_, unless, when, void)
 import qualified Data.ByteString.Char8 as BC
+import Data.Bits ((.&.))
 import Data.Char (digitToInt, isHexDigit)
 import Data.List (sortOn)
 import qualified Data.Map.Strict as M
@@ -25,6 +26,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.Word (Word32)
+import Numeric (showHex)
 import System.Directory (doesPathExist, getModificationTime, removeFile)
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure, exitSuccess)
@@ -33,6 +35,7 @@ import System.IO (hPutStrLn, stderr)
 
 import Rivermonad.Actions.DynamicWorkspaces
 import Rivermonad.Core
+import Rivermonad.Keysym
 import Rivermonad.Input (currentKeyboardLayout, handleInputEvent, nextKeyboardLayout, setupKeymap)
 import qualified Rivermonad.JSON as J
 import Rivermonad.Layout (ChangeLayout (..), JumpToLayout (..))
@@ -91,6 +94,10 @@ defaultHandler ev = case ev of
   EvRiverSeatV1 s e -> onSeat s e
   EvRiverXkbBindingV1 b RiverXkbBindingV1Pressed -> do
     act <- gets (M.lookup b . keyActions)
+    debug <- io debugEnabled
+    when debug $ do
+      name <- gets (M.findWithDefault (show b) b . keyNames)
+      io (hPutStrLn stderr ("rivermonad: binding " ++ name ++ " fired"))
     forM_ act queue'
   EvRiverXkbBindingV1 {} -> pure ()
   EvRiverPointerBindingV1 b RiverPointerBindingV1Pressed -> do
@@ -299,6 +306,21 @@ rescreen sds ws =
 ------------------------------------------------------------------------------
 -- river_seat_v1
 
+-- | Whether @RIVERMONAD_DEBUG@ asks for the chatty log.
+debugEnabled :: IO Bool
+debugEnabled = maybe False (`notElem` ["", "0"]) <$> lookupEnv "RIVERMONAD_DEBUG"
+
+-- | A binding as EZConfig would write it, for the log: @M1-S-\<Return\>@.
+showKey :: (KeyMask, KeySym) -> String
+showKey (m, k) = concat [ p | (bit, p) <- mods, m .&. bit /= 0 ] ++ name
+  where
+    mods = [ (mod4Mask, "M4-"), (mod1Mask, "M1-"), (mod3Mask, "M3-"), (mod5Mask, "M5-")
+           , (controlMask, "C-"), (shiftMask, "S-") ]
+    name = case [ n | (n, v) <- keysymNames, v == k ] of
+      (n : _) | length n == 1 -> n
+              | otherwise -> "<" ++ n ++ ">"
+      [] -> "<0x" ++ showHex k ">"
+
 setupSeat :: ObjectId -> X ()
 setupSeat s = do
   cfg <- asks config
@@ -309,8 +331,14 @@ setupSeat s = do
   ps <- io $ mapM (\((m, btn), act) -> (\b -> (b, (s, act))) <$> riverSeatV1GetPointerBinding c s btn m)
                   (M.toList (mouseBindings cfg cfg))
   lseat <- io $ mapM (\l -> riverLayerShellV1GetSeat c l s) (gLayerShell g)
+  io $ hPutStrLn stderr $ "rivermonad: seat " ++ show s ++ ": " ++ show (length ks) ++ " key bindings, "
+    ++ show (length ps) ++ " pointer bindings"
+  debug <- io debugEnabled
+  when debug $ io $ mapM_ (\(k, (b, _)) -> hPutStrLn stderr ("   " ++ show b ++ " = " ++ showKey k))
+                          (zip (M.keys (keys cfg cfg)) ks)
   modify $ \st -> st
     { keyActions = M.union (M.fromList ks) (keyActions st)
+    , keyNames = M.union (M.fromList (zip (map fst ks) (map showKey (M.keys (keys cfg cfg))))) (keyNames st)
     , pointerActions = M.union (M.fromList ps) (pointerActions st)
     , seats = M.insert s SeatInfo
         { siBindings = map fst ks ++ map fst ps
@@ -339,6 +367,7 @@ onSeat s e = case e of
     modify $ \st -> st
       { seats = M.delete s (seats st)
       , keyActions = M.withoutKeys (keyActions st) bs
+      , keyNames = M.withoutKeys (keyNames st) bs
       , pointerActions = M.withoutKeys (pointerActions st) bs }
   RiverSeatV1PointerEnter w -> do
     upd (\i -> i { siPointerWindow = Just w })

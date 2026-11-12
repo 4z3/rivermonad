@@ -24,7 +24,8 @@ import System.Directory (doesFileExist, removeFile)
 import System.Environment (getArgs, getExecutablePath, lookupEnv)
 import System.Exit (exitFailure, exitSuccess, exitWith, ExitCode (..))
 import System.FilePath ((</>))
-import System.IO (hPutStrLn, hSetBuffering, stdout, stderr, BufferMode (..))
+import GHC.IO.Handle (hDuplicateTo)
+import System.IO (Handle, IOMode (..), hClose, hPutStrLn, hSetBuffering, openFile, stdout, stderr, BufferMode (..))
 import System.Posix.Process (executeFile, getProcessID)
 import System.Posix.Signals (Handler (..), installHandler, nullSignal, sigINT, sigTERM, sigUSR1, signalProcess)
 
@@ -90,6 +91,12 @@ usage = unlines
   , "  --ipc REQUEST  send a JSON request to the IPC socket, e.g."
   , "                 --ipc '\"EventStream\"'  or  --ipc '{\"Action\":{\"FocusWorkspace\":\"2\"}}'"
   , "  --version      print the version"
+  , ""
+  , "Environment:"
+  , "  RIVERMONAD_LOG=FILE  append messages, and the output of programs started"
+  , "                       from bindings and hooks, to FILE"
+  , "  RIVERMONAD_DEBUG=1   log every event from river, every binding and every"
+  , "                       binding that fires"
   ]
 
 pidFile :: IO FilePath
@@ -136,6 +143,7 @@ stopRunning = do
 
 runWM :: XConfig -> IO ()
 runWM cfg = do
+  redirectOutput
   hSetBuffering stdout LineBuffering
   c <- connect
   registry <- wlDisplayGetRegistry c displayObject
@@ -160,8 +168,11 @@ runWM cfg = do
   mcomp <- bindG wlCompositorInterface wlCompositorVersion
   mshm <- bindG wlShmInterface wlShmVersion
   (wm, wmv) <- maybe (die' "river_window_manager_v1 not advertised: is this river >= 0.4?") pure mwm
-  (xkb, _) <- maybe (die' "river_xkb_bindings_v1 not advertised") pure mxkb
+  (xkb, xkbv) <- maybe (die' "river_xkb_bindings_v1 not advertised") pure mxkb
   flush c
+  disp <- maybe "wayland-0" id <$> lookupEnv "WAYLAND_DISPLAY"
+  hPutStrLn stderr $ "rivermonad: managing " ++ disp ++ " (river_window_manager_v1 version " ++ show wmv
+    ++ ", river_xkb_bindings_v1 version " ++ show xkbv ++ ")"
 
   ch <- newChan
   _ <- forkIO $ (forever (readEvents c >>= writeChan ch . InEvents))
@@ -188,7 +199,7 @@ runWM cfg = do
               (W.new (layoutHook cfg) tags0 [SD nullObject (Rectangle 0 0 0 0)])
       st0 = XState
         { windowset = ws0, windowInfo = M.empty, outputs = M.empty, seats = M.empty
-        , keyActions = M.empty, pointerActions = M.empty, pending = [], newWindows = []
+        , keyActions = M.empty, keyNames = M.empty, pointerActions = M.empty, pending = [], newWindows = []
         , outputsDirty = False, haveScreens = False, fullscreen = S.empty, needsCenter = S.empty
         , drag = Nothing, sessionLocked = False, started = False
         , restoreState = rsWindows restored, restarting = False, restoreView = rsView restored
@@ -212,6 +223,25 @@ runWM cfg = do
     Right _ -> pure ()
   where
     die' msg = hPutStrLn stderr ("rivermonad: " ++ msg) >> exitFailure
+
+-- | With @RIVERMONAD_LOG=FILE@, append everything written to stdout and
+-- stderr to that file: our own messages and those of every program started
+-- from key bindings and hooks, which inherit them. Without it they go
+-- wherever river's own output goes.
+redirectOutput :: IO ()
+redirectOutput = do
+  path <- lookupEnv "RIVERMONAD_LOG"
+  case path of
+    Just p | not (null p) -> do
+      r <- E.try (openFile p AppendMode) :: IO (Either E.IOException Handle)
+      case r of
+        Right h -> do
+          hSetBuffering h NoBuffering
+          hDuplicateTo h stderr
+          hDuplicateTo h stdout
+          hClose h
+        Left e -> hPutStrLn stderr ("rivermonad: cannot log to " ++ p ++ ": " ++ show e)
+    _ -> pure ()
 
 -- | Path of our own binary. After a recompile the running file has been
 -- replaced, and Linux reports the old inode as "<path> (deleted)": exec the

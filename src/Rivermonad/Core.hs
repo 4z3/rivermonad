@@ -394,6 +394,7 @@ data XState = XState
   , outputs         :: !(M.Map ObjectId OutputInfo)
   , seats           :: !(M.Map ObjectId SeatInfo)
   , keyActions      :: !(M.Map ObjectId (X ()))
+  , keyNames        :: !(M.Map ObjectId String) -- ^ binding -> its key, for the log
   , pointerActions  :: !(M.Map ObjectId (ObjectId, Window -> X ())) -- ^ binding -> (seat, action)
   , pending         :: ![X ()]          -- ^ actions for the next manage sequence (newest first)
   , newWindows      :: ![Window]        -- ^ windows awaiting the manage hook (newest first)
