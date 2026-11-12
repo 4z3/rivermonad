@@ -3,7 +3,8 @@
 module Rivermonad.Operations
   ( windows, refresh, withFocused, focus
   , kill, killWindow
-  , spawn
+  , spawn, xfork
+  , windowId
   , sendMessage, broadcastMessage, setLayout, setLayoutOf
   , float, sinkWindow, windowGeometry, setFloatGeometry, screenOfWindow
   , toggleFullscreen
@@ -21,6 +22,7 @@ import qualified Control.Exception as E
 import Control.Monad (void, when, forM_)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Word (Word32)
 import qualified Data.Set as S
 import System.Exit (ExitCode (..), exitSuccess)
 import System.IO (hPutStrLn, stderr)
@@ -31,6 +33,7 @@ import Rivermonad.Layout
 import Rivermonad.Recompile (recompile)
 import qualified Rivermonad.StackSet as W
 import Rivermonad.Wayland.Protocol
+import Rivermonad.Wayland.Wire (ObjectId (..))
 
 -- | Modify the window set. The result is pushed to the compositor at the end
 -- of the current manage sequence.
@@ -50,6 +53,13 @@ queue a = do
   wm <- asks (gWm . globals)
   io (riverWindowManagerV1ManageDirty c wm)
 
+-- | The number the IPC socket uses for a window (@id@ in a snapshot, the
+-- argument of @FocusWindow@ and @ShiftWindow@). Pass it to external tools
+-- that talk to the socket. It is only valid until the window manager
+-- restarts.
+windowId :: Window -> Word32
+windowId = unObjectId
+
 withFocused :: (Window -> X ()) -> X ()
 withFocused f = withWindowSet $ \ws -> maybe (pure ()) f (W.peek ws)
 
@@ -67,10 +77,19 @@ killWindow w = do
 
 -- | Run a shell command, fully detached from the window manager.
 spawn :: String -> X ()
-spawn cmd = io $ void $ E.try @E.SomeException $ do
+spawn cmd = xfork (executeFile "/bin/sh" False ["-c", cmd] Nothing)
+
+-- | Run an action in a new process that is detached from the window
+-- manager (its own session, not our child), as xmonad's @xfork@. Use it
+-- with 'executeFile' to start a program with an argument list and without
+-- a shell:
+--
+-- > xfork (executeFile "alacritty" True ["-e", "htop"] Nothing)
+xfork :: IO () -> X ()
+xfork act = io $ void $ E.try @E.SomeException $ do
   pid <- forkProcess $ do
     _ <- createSession
-    _ <- forkProcess (executeFile "/bin/sh" False ["-c", cmd] Nothing)
+    _ <- forkProcess act
     exitImmediately ExitSuccess
   void (getProcessStatus True False pid)
 
