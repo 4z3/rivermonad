@@ -27,7 +27,8 @@ class Protocol:
                 def messages(tag):
                     return [(m.get("name"),
                              [(a.get("name"), a.get("type"), a.get("interface")) for a in m.findall("arg")],
-                             m.get("type") == "destructor")
+                             m.get("type") == "destructor",
+                             int(m.get("since", "1")))
                             for m in iface.findall(tag)]
                 self.interfaces[iface.get("name")] = {
                     "version": int(iface.get("version")),
@@ -50,7 +51,8 @@ class Request:
 
 
 class MockRiver:
-    def __init__(self, runtime_dir, display, protocol_dir, wm_version=4, xkb_version=2):
+    def __init__(self, runtime_dir, display, protocol_dir, wm_version=4, xkb_version=3):
+        # The defaults are what river 0.4.5 advertises.
         self.proto = Protocol(protocol_dir)
         self.path = os.path.join(runtime_dir, display)
         if os.path.exists(self.path):
@@ -62,12 +64,14 @@ class MockRiver:
                         (2, "river_xkb_bindings_v1", xkb_version)]
         self.conn = None
         self.log = []
+        self.too_new = []    # requests that the bound version does not have
         self._reset()
 
     # -- connection ---------------------------------------------------------
 
     def _reset(self):
         self.objects = {1: "wl_display"}
+        self.versions = {1: 1}
         self.buf = b""
         self.next_server_id = SERVER_ID_BASE
         self.closed = False
@@ -90,6 +94,7 @@ class MockRiver:
         i = self.next_server_id
         self.next_server_id += 1
         self.objects[i] = iface
+        self.versions[i] = self.versions[self.wm]
         return i
 
     # -- wire ---------------------------------------------------------------
@@ -99,6 +104,8 @@ class MockRiver:
         events = self.proto.interfaces[iface]["events"]
         opcode = [e[0] for e in events].index(event)
         sig = events[opcode][1]
+        assert events[opcode][3] <= self.versions.get(obj, 1), \
+            "the mock would send %s.%s to a version %d object" % (iface, event, self.versions.get(obj, 1))
         assert len(sig) == len(values), (iface, event, sig, values)
         body = b""
         for (_, typ, _), v in zip(sig, values):
@@ -126,7 +133,9 @@ class MockRiver:
             iface = self.objects.get(obj)
             if iface is None:
                 raise AssertionError("request on unknown object %d" % obj)
-            name, sig, destructor = self.proto.interfaces[iface]["requests"][opcode]
+            name, sig, destructor, since = self.proto.interfaces[iface]["requests"][opcode]
+            if since > self.versions.get(obj, 1):
+                self.too_new.append("%s.%s needs version %d, bound %d" % (iface, name, since, self.versions.get(obj, 1)))
             args, off = {}, 0
             for aname, typ, aiface in sig:
                 if typ in ("int", "fixed"):
@@ -151,6 +160,9 @@ class MockRiver:
                     new = struct.unpack_from("<I", body, off)[0]
                     off += 4
                     self.objects[new] = aiface
+                    # a bound global has the version asked for; other new
+                    # objects have the version of the object that made them
+                    self.versions[new] = args.get("version", self.versions.get(obj, 1))
                     args[aname] = new
                     args["interface"] = aiface
                 elif typ == "fd":
