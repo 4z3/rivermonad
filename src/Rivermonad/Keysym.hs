@@ -328,6 +328,51 @@ xK_XF86WLAN = 0x1008ff95
 xK_XF86Tools :: KeySym
 xK_XF86Tools = 0x1008ff81
 
+-- Modifier keys can be bound like any other key: river matches a binding
+-- against the modifiers held /before/ the key press, so @(0, xK_Super_R)@
+-- fires when Super_R is pressed alone and @(shiftMask, xK_Super_R)@ when it
+-- is pressed while Shift is held.
+xK_Shift_L :: KeySym
+xK_Shift_L = 0xffe1
+xK_Shift_R :: KeySym
+xK_Shift_R = 0xffe2
+xK_Control_L :: KeySym
+xK_Control_L = 0xffe3
+xK_Control_R :: KeySym
+xK_Control_R = 0xffe4
+xK_Caps_Lock :: KeySym
+xK_Caps_Lock = 0xffe5
+xK_Meta_L :: KeySym
+xK_Meta_L = 0xffe7
+xK_Meta_R :: KeySym
+xK_Meta_R = 0xffe8
+xK_Alt_L :: KeySym
+xK_Alt_L = 0xffe9
+xK_Alt_R :: KeySym
+xK_Alt_R = 0xffea
+xK_Super_L :: KeySym
+xK_Super_L = 0xffeb
+xK_Super_R :: KeySym
+xK_Super_R = 0xffec
+xK_Hyper_L :: KeySym
+xK_Hyper_L = 0xffed
+xK_Hyper_R :: KeySym
+xK_Hyper_R = 0xffee
+xK_ISO_Level3_Shift :: KeySym
+xK_ISO_Level3_Shift = 0xfe03
+xK_Prior :: KeySym
+xK_Prior = 0xff55
+xK_Next :: KeySym
+xK_Next = 0xff56
+xK_XF86ScreenSaver :: KeySym
+xK_XF86ScreenSaver = 0x1008ff2d
+xK_XF86MyComputer :: KeySym
+xK_XF86MyComputer = 0x1008ff33
+xK_XF86Forward :: KeySym
+xK_XF86Forward = 0x1008ff27
+xK_XF86Back :: KeySym
+xK_XF86Back = 0x1008ff26
+
 -- | Keysyms by their xkbcommon name, used by "Rivermonad.Util.EZConfig".
 keysymNames :: [(String, KeySym)]
 keysymNames =
@@ -481,4 +526,24 @@ keysymNames =
   , ("XF86Display", 0x1008ff59)
   , ("XF86WLAN", 0x1008ff95)
   , ("XF86Tools", 0x1008ff81)
+  , ("Shift_L", 0xffe1)
+  , ("Shift_R", 0xffe2)
+  , ("Control_L", 0xffe3)
+  , ("Control_R", 0xffe4)
+  , ("Caps_Lock", 0xffe5)
+  , ("Meta_L", 0xffe7)
+  , ("Meta_R", 0xffe8)
+  , ("Alt_L", 0xffe9)
+  , ("Alt_R", 0xffea)
+  , ("Super_L", 0xffeb)
+  , ("Super_R", 0xffec)
+  , ("Hyper_L", 0xffed)
+  , ("Hyper_R", 0xffee)
+  , ("ISO_Level3_Shift", 0xfe03)
+  , ("Prior", 0xff55)
+  , ("Next", 0xff56)
+  , ("XF86ScreenSaver", 0x1008ff2d)
+  , ("XF86MyComputer", 0x1008ff33)
+  , ("XF86Forward", 0x1008ff27)
+  , ("XF86Back", 0x1008ff26)
   ]
