@@ -37,6 +37,7 @@ library
   exposed-modules:
     Rivermonad
     Rivermonad.Actions.CycleWS
+    Rivermonad.Actions.DynamicWorkspaces
     Rivermonad.Config
     Rivermonad.Core
     Rivermonad.Engine

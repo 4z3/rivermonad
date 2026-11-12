@@ -55,11 +55,11 @@ shiftTo :: Direction1D -> WSType -> X ()
 shiftTo dir t = findWorkspace dir t 1 >>= mapM_ (windows . W.shift)
 
 -- | The n-th workspace in the given direction matching the type, in the
--- order of the configuration (the scratchpad workspace is skipped).
+-- order of the workspace list (the scratchpad workspace is skipped).
 findWorkspace :: Direction1D -> WSType -> Int -> X (Maybe WorkspaceId)
 findWorkspace dir t n = do
   ws <- gets windowset
-  tags <- asks (workspaces . config)
+  tags <- gets workspaceOrder
   let idx w = fromMaybe maxBound (elemIndex (W.tag w) tags)
       ordered = sortOn idx (filter ((/= scratchpadWorkspaceTag) . W.tag) (W.workspaces ws))
       visibleTags = map (W.tag . W.workspace) (W.screens ws)

@@ -4,9 +4,10 @@
 module Rivermonad.Main
   ( rivermonad
   , launch
+  , stopRunning
   ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.Chan
 import qualified Control.Exception as E
 import Control.Monad (forM_, forever, void, when)
@@ -25,7 +26,7 @@ import System.Exit (exitFailure, exitSuccess, exitWith, ExitCode (..))
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, hSetBuffering, stdout, stderr, BufferMode (..))
 import System.Posix.Process (executeFile, getProcessID)
-import System.Posix.Signals (Handler (..), installHandler, sigINT, sigTERM, sigUSR1, signalProcess)
+import System.Posix.Signals (Handler (..), installHandler, nullSignal, sigINT, sigTERM, sigUSR1, signalProcess)
 
 import Paths_rivermonad (version)
 import Rivermonad.Core
@@ -33,7 +34,7 @@ import Rivermonad.Config (defaultConfig)
 import Rivermonad.Engine
 import Rivermonad.Recompile
 import Rivermonad.Status (runStatusClient)
-import Rivermonad.IPC (publishIPC, runIPCClient, startIPCServer)
+import Rivermonad.IPC (publishIPC, runIPCClient, startIPCServer, storeSnapshot)
 import Rivermonad.Operations (queue)
 import qualified Rivermonad.StackSet as W
 import Rivermonad.Wayland.Protocol
@@ -69,6 +70,7 @@ rivermonad cfg = do
       ok <- recompile True
       exitWith (if ok then ExitSuccess else ExitFailure 1)
     ["--restart"] -> signalRunning
+    ["--quit"] -> stopRunning
     ["--status"] -> runStatusClient
     ["--ipc", req] -> runIPCClient req
     ["--help"] -> putStr usage
@@ -82,6 +84,8 @@ usage = unlines
   , "  (no option)    run as the window manager of a river session"
   , "  --recompile    recompile ~/.config/rivermonad/rivermonad.hs"
   , "  --restart      ask the running rivermonad to restart"
+  , "  --quit         ask the running rivermonad to save its state and stop, and"
+  , "                 wait until it has; the next one started takes over the windows"
   , "  --status       print status lines (JSON) for waybar's custom modules"
   , "  --ipc REQUEST  send a JSON request to the IPC socket, e.g."
   , "                 --ipc '\"EventStream\"'  or  --ipc '{\"Action\":{\"FocusWorkspace\":\"2\"}}'"
@@ -100,6 +104,32 @@ signalRunning = do
   r <- E.try (readFile f >>= \s -> length s `seq` pure s) :: IO (Either E.IOException String)
   case r of
     Right s | [(pid, _)] <- reads s -> signalProcess sigUSR1 (fromIntegral (pid :: Int))
+    _ -> hPutStrLn stderr "rivermonad: no running instance found" >> exitFailure
+
+-- | Ask the rivermonad of this Wayland display to save its state and stop
+-- managing, and wait until it is gone. River keeps the windows open, and
+-- the next window manager started in the session restores workspaces,
+-- window order, layouts and floating windows from the saved state. This is
+-- how one build hands the session over to another.
+stopRunning :: IO ()
+stopRunning = do
+  f <- pidFile
+  r <- E.try (readFile f >>= \s -> length s `seq` pure s) :: IO (Either E.IOException String)
+  case r of
+    Right s | [(pid, _)] <- reads s -> do
+      let p = fromIntegral (pid :: Int)
+          alive = either (\e -> const False (e :: E.IOException)) (const True)
+                    <$> E.try (signalProcess nullSignal p)
+          wait :: Int -> IO Bool
+          wait n = do
+            a <- alive
+            if not a then pure True
+              else if n <= 0 then pure False
+              else threadDelay 10000 >> wait (n - 1)
+      sent <- E.try (signalProcess sigTERM p) :: IO (Either E.IOException ())
+      gone <- either (const (pure True)) (const (wait 500)) sent
+      if gone then pure ()
+        else hPutStrLn stderr "rivermonad: the running instance did not stop within 5 seconds" >> exitFailure
     _ -> hPutStrLn stderr "rivermonad: no running instance found" >> exitFailure
 
 ------------------------------------------------------------------------------
@@ -147,15 +177,22 @@ runWM cfg = do
                   , gInputManager = fst <$> mim, gXkbConfig = fst <$> mxc, gLibinput = fst <$> mli
                   , gCompositor = fst <$> mcomp, gShm = fst <$> mshm }
       xconf = XConf { config = cfg, conn = c, globals = g, inputs = ch
-                    , ipcPublish = maybe (const (pure ())) publishIPC ipcSrv }
+                    , ipcPublish = maybe (const (pure ())) publishIPC ipcSrv
+                    , ipcSnapshot = maybe (const (pure ())) storeSnapshot ipcSrv }
+      -- After a restart the workspace list is the one that was running,
+      -- not the configured one: workspaces may have been added or removed.
+      tags0 = case rsTags restored of
+        [] -> workspaces cfg
+        ts -> ts
       ws0 = applyRestoredLayouts (layoutHook cfg) (rsLayouts restored)
-              (W.new (layoutHook cfg) (workspaces cfg) [SD nullObject (Rectangle 0 0 0 0)])
+              (W.new (layoutHook cfg) tags0 [SD nullObject (Rectangle 0 0 0 0)])
       st0 = XState
         { windowset = ws0, windowInfo = M.empty, outputs = M.empty, seats = M.empty
         , keyActions = M.empty, pointerActions = M.empty, pending = [], newWindows = []
         , outputsDirty = False, haveScreens = False, fullscreen = S.empty, needsCenter = S.empty
         , drag = Nothing, sessionLocked = False, started = False
         , restoreState = rsWindows restored, restarting = False, restoreView = rsView restored
+        , quitting = False, workspaceOrder = tags0, afterManage = []
         , restoreOrder = rsOrder restored
         , borderWidths = M.empty
         , extensibleState = M.fromList [ (k, Left v) | (k, v) <- rsExt restored ]
@@ -227,5 +264,13 @@ mainLoop debug c ch = forever $ do
       exitFailure
     InRestart -> requestRestart
     InAction a -> queue (runIPCAction a)
-    InQuit -> io exitSuccess
+    InSync done -> do
+      modify $ \s -> s { afterManage = done : afterManage s }
+      queue (pure ())
+    -- Stop cleanly, saving the state for whoever manages next. A second
+    -- signal (or no manage sequence in sight) exits at once.
+    InQuit -> do
+      q <- gets quitting
+      have <- gets haveScreens
+      if q || not have then io exitSuccess else requestQuit
   io (flush c)

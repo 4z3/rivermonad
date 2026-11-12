@@ -229,6 +229,13 @@ data IPCAction
   | IPCRestart
   | IPCNextKeyboardLayout
   | IPCLogout                         -- ^ close every window, then end the session
+  | IPCQuit                           -- ^ save the state and stop managing; windows stay open
+  | IPCFocusWindow Word32             -- ^ focus a window by its id, viewing its workspace
+  | IPCShiftWindow Word32 WorkspaceId -- ^ move a window (by id) to a workspace
+  | IPCAddWorkspace WorkspaceId       -- ^ create a hidden workspace
+  | IPCRemoveWorkspace WorkspaceId    -- ^ remove a workspace if it is empty
+  | IPCRenameWorkspace WorkspaceId WorkspaceId
+  | IPCSetWorkspaces [WorkspaceId]    -- ^ make this the workspace list: create, rename, remove empty ones, reorder
   | IPCLogoutCheck Int                -- ^ internal: the graceful logout timed out
   deriving (Show, Eq)
 
@@ -238,7 +245,8 @@ data Input
   | InAction IPCAction
   | InDisconnected String
   | InRestart     -- ^ restart the window manager (SIGUSR1 or after recompiling)
-  | InQuit        -- ^ SIGTERM / SIGINT
+  | InQuit        -- ^ SIGTERM / SIGINT: save the state and stop managing
+  | InSync (IO ()) -- ^ run this once everything received so far has been applied and published
 
 ------------------------------------------------------------------------------
 -- Configuration
@@ -377,6 +385,7 @@ data XConf = XConf
   , globals :: !Globals
   , inputs  :: !(Chan Input)
   , ipcPublish :: !(B.ByteString -> IO ()) -- ^ send a state line to IPC subscribers
+  , ipcSnapshot :: !(B.ByteString -> IO ()) -- ^ store the reply to IPC @"Snapshot"@ requests
   }
 
 data XState = XState
@@ -397,6 +406,11 @@ data XState = XState
   , started         :: !Bool            -- ^ startup hook already ran
   , restoreState    :: !(M.Map String (WorkspaceId, Maybe RationalRectS))
   , restarting      :: !Bool
+  , afterManage     :: ![IO ()]         -- ^ run after the next manage sequence has been published
+  , quitting        :: !Bool            -- ^ stop managing after the next manage sequence, keeping the state file
+  , workspaceOrder  :: ![WorkspaceId]   -- ^ user-visible workspaces in their order; changes with
+                                        --   "Rivermonad.Actions.DynamicWorkspaces". Workspaces not
+                                        --   listed (the scratchpad one) are internal.
   , restoreView     :: !(Maybe WorkspaceId) -- ^ workspace to show after a restart
   , restoreOrder    :: !(M.Map String (Int, Bool)) -- ^ identifier -> (stack position, focused)
   , borderWidths    :: !(M.Map Window Int)  -- ^ per-window border overrides set by layouts

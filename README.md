@@ -66,7 +66,13 @@ the stable `river-window-management-v1` protocol. Because of this split:
   position and focus, every workspace's layout state and persistent
   extensible state
 * an IPC socket (newline-delimited JSON, like niri's): a state event stream
-  and actions, usable from scripts with `rivermonad --ipc`
+  and actions, usable from scripts with `rivermonad --ipc`. For pagers
+  there is a `"Snapshot"` request (every workspace with its windows and
+  their geometry) and actions to move windows and to add, remove, rename
+  and reorder workspaces
+* `rivermonad --quit` (or SIGTERM) saves the state and stops managing; the
+  next rivermonad started in the session, this build or another, takes the
+  windows over where they were
 * xmonad's extension points: layouts in `X` (`doLayout`, `handleMessage`),
   `LayoutModifier`, `ExtensibleState`, `handleEventHook`
 
@@ -82,6 +88,7 @@ the `XMonad.` prefix replaced by `Rivermonad.`:
 | `Rivermonad.Util.NamedScratchpad` | toggleable scratchpad windows |
 | `Rivermonad.Util.ExtensibleState` | typed state for your own modules (`XS.get`/`XS.put`) |
 | `Rivermonad.Actions.CycleWS` | `nextWS`, `prevWS`, `toggleWS`, `moveTo Next EmptyWS`, screens |
+| `Rivermonad.Actions.DynamicWorkspaces` | `addWorkspace`, `removeEmptyWorkspace`, `renameWorkspace`, `setWorkspaces`; the list survives restarts |
 | `Rivermonad.Hooks.ManageHelpers` | `composeOne`, `-?>`, `doRectFloat`, `doFullFloat`, `transience` |
 | `Rivermonad.Hooks.InsertPosition` | `insertPosition Below Newer` |
 | `Rivermonad.Hooks.StatusBar` | status line for waybar (see below) |

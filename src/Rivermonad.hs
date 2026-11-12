@@ -13,6 +13,7 @@ module Rivermonad
   , module Rivermonad.ManageHook
   , module Rivermonad.Operations
   , rivermonad
+  , stopRunning
   , nextKeyboardLayout
   , setKeyboardLayout
   , (.|.)
@@ -27,6 +28,6 @@ import Rivermonad.Core
 import Rivermonad.Keysym
 import Rivermonad.Layout
 import Rivermonad.Input (nextKeyboardLayout, setKeyboardLayout)
-import Rivermonad.Main (rivermonad)
+import Rivermonad.Main (rivermonad, stopRunning)
 import Rivermonad.ManageHook
 import Rivermonad.Operations

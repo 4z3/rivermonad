@@ -84,10 +84,10 @@ instance Default PP where
     , ppExtras = []
     }
 
--- | Workspaces in the order of the configuration, scratchpads left out.
+-- | Workspaces in the order of the workspace list, scratchpads left out.
 configOrder :: X ([WindowSpace] -> [WindowSpace])
 configOrder = do
-  tags <- asks (workspaces . config)
+  tags <- gets workspaceOrder
   let idx t = fromMaybe maxBound (elemIndex t tags)
   pure (sortOn (idx . W.tag) . filter ((/= scratchpadWorkspaceTag) . W.tag))
 

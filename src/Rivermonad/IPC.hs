@@ -7,7 +7,17 @@
 --   @{"FocusWorkspace":"3"}@, @{"ViewWorkspace":"3"}@, @"NextLayout"@,
 --   @{"JumpToLayout":"Full"}@, @"FocusUp"@, @"FocusDown"@, @"Restart"@,
 --   @"Logout"@ (close every window, then end the session),
---   @"NextKeyboardLayout"@.
+--   @"NextKeyboardLayout"@, @"Quit"@ (save the state and stop managing;
+--   the windows stay open for the next window manager process),
+--   @{"FocusWindow":ID}@, @{"ShiftWindow":[ID,"3"]}@,
+--   @{"AddWorkspace":"mail"}@, @{"RemoveWorkspace":"mail"}@ (only if
+--   empty), @{"RenameWorkspace":["mail","post"]}@ and
+--   @{"SetWorkspaces":["1","2","post"]}@ (see
+--   "Rivermonad.Actions.DynamicWorkspaces").
+-- * @"Snapshot"@: reply with one @{"Snapshot":{...}}@ line listing every
+--   workspace with its windows and their geometry (see
+--   'Rivermonad.Engine.publishSnapshot'), then close. Actions sent before
+--   it are already applied in the reply.
 --
 -- The socket is @$XDG_RUNTIME_DIR/rivermonad-$WAYLAND_DISPLAY.sock@ and is
 -- exported to children as @RIVERMONAD_SOCKET@.
@@ -16,6 +26,8 @@ module Rivermonad.IPC
   , ipcSocketPath
   , startIPCServer
   , publishIPC
+  , storeSnapshot
+  , parseAction
   , runIPCClient
   ) where
 
@@ -35,6 +47,7 @@ import System.Environment (lookupEnv, setEnv)
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.IO (hFlush, hPutStrLn, stderr, stdout)
+import System.Timeout (timeout)
 
 import Rivermonad.Core (IPCAction (..), Input (..))
 import qualified Rivermonad.JSON as J
@@ -42,6 +55,7 @@ import qualified Rivermonad.JSON as J
 data IPCServer = IPCServer
   { srvSubs :: MVar [NS.Socket]
   , srvLast :: IORef B.ByteString
+  , srvSnapshot :: IORef B.ByteString
   }
 
 -- | The socket of the rivermonad managing /this/ Wayland display, if it
@@ -73,7 +87,7 @@ startIPCServer ch = do
     NS.bind sock (NS.SockAddrUnix path)
     NS.listen sock 16
     setEnv "RIVERMONAD_SOCKET" path
-    srv <- IPCServer <$> newMVar [] <*> newIORef B.empty
+    srv <- IPCServer <$> newMVar [] <*> newIORef B.empty <*> newIORef B.empty
     void $ forkIO $ forever $ do
       (client, _) <- NS.accept sock
       NS.withFdSocket client NS.setCloseOnExecIfNeeded
@@ -96,6 +110,18 @@ handleClient srv ch s = do
         ok <- sendLine s (J.renderUtf8 (J.obj [("Ok", J.str "Handled")]))
         ok' <- if ok && not (B.null lastLine) then sendRaw s lastLine else pure ok
         pure (if ok' then s : subs else subs)
+    Just (J.JStr "Snapshot") -> do
+      -- Wait until the requests sent before this one have been applied, so
+      -- a client reads its own changes. Do not wait forever: without a
+      -- screen there is no manage sequence to wait for.
+      applied <- newEmptyMVar
+      writeChan ch (InSync (void (tryPutMVar applied ())))
+      _ <- timeout 1000000 (takeMVar applied)
+      snap <- readIORef (srvSnapshot srv)
+      void $ if B.null snap
+        then sendLine s (J.renderUtf8 (J.obj [("Err", J.str "no snapshot yet")]))
+        else sendLine s snap
+      NS.close s
     Just (J.JObj [("Action", a)]) | Just act <- parseAction a -> do
       writeChan ch (InAction act)
       void (sendLine s (J.renderUtf8 (J.obj [("Ok", J.str "Handled")])))
@@ -115,7 +141,25 @@ parseAction v = case v of
   J.JObj [("FocusWorkspace", J.JStr t)] -> Just (IPCFocusWorkspace t)
   J.JObj [("ViewWorkspace", J.JStr t)] -> Just (IPCGreedyViewWorkspace t)
   J.JObj [("JumpToLayout", J.JStr l)] -> Just (IPCJumpToLayout l)
+  J.JStr "Quit" -> Just IPCQuit
+  J.JObj [("FocusWindow", J.JNum n)] -> IPCFocusWindow <$> windowId n
+  J.JObj [("ShiftWindow", J.JArr [J.JNum n, J.JStr t])] -> (`IPCShiftWindow` t) <$> windowId n
+  J.JObj [("AddWorkspace", J.JStr t)] -> Just (IPCAddWorkspace t)
+  J.JObj [("RemoveWorkspace", J.JStr t)] -> Just (IPCRemoveWorkspace t)
+  J.JObj [("RenameWorkspace", J.JArr [J.JStr old, J.JStr new])] -> Just (IPCRenameWorkspace old new)
+  J.JObj [("SetWorkspaces", J.JArr ts)] -> IPCSetWorkspaces <$> mapM name ts
   _ -> Nothing
+
+  where
+    name (J.JStr t) = Just t
+    name _ = Nothing
+    windowId n
+      | n >= 0, n <= 4294967295, n == fromIntegral (round n :: Integer) = Just (round n)
+      | otherwise = Nothing
+
+-- | Replace the reply to @"Snapshot"@ requests.
+storeSnapshot :: IPCServer -> B.ByteString -> IO ()
+storeSnapshot srv = writeIORef (srvSnapshot srv)
 
 -- | Send a state line to every subscriber, if it changed.
 publishIPC :: IPCServer -> B.ByteString -> IO ()

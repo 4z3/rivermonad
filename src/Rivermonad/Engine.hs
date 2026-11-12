@@ -4,6 +4,7 @@
 module Rivermonad.Engine
   ( handleEvent
   , requestRestart
+  , requestQuit
   , saveRestartState
   , loadRestartState
   , restartStateFile
@@ -13,7 +14,7 @@ module Rivermonad.Engine
   ) where
 
 import qualified Control.Exception as E
-import Control.Monad (forM_, unless, when, void)
+import Control.Monad (forM, forM_, unless, when, void)
 import qualified Data.ByteString.Char8 as BC
 import Data.Char (digitToInt, isHexDigit)
 import Data.List (sortOn)
@@ -24,12 +25,13 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.Word (Word32)
-import System.Directory (removeFile)
+import System.Directory (doesPathExist, getModificationTime, removeFile)
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 
+import Rivermonad.Actions.DynamicWorkspaces
 import Rivermonad.Core
 import Rivermonad.Input (currentKeyboardLayout, handleInputEvent, nextKeyboardLayout, setupKeymap)
 import qualified Rivermonad.JSON as J
@@ -369,8 +371,13 @@ onManageStart = do
   g <- asks globals
   withConn (\c -> riverWindowManagerV1ManageFinish c (gWm g))
   catchX publishState (pure ())
+  catchX publishSnapshot (pure ())
+  waiting <- gets afterManage
+  modify $ \s -> s { afterManage = [] }
+  io (sequence_ (reverse waiting))
   r <- gets restarting
-  when r $ do
+  q <- gets quitting
+  when (r || q) $ do
     saveRestartState
     withConn (\c -> riverWindowManagerV1Stop c (gWm g))
 
@@ -660,6 +667,16 @@ requestRestart = do
   g <- asks globals
   withConn (\c -> riverWindowManagerV1ManageDirty c (gWm g))
 
+-- | Ask to stop managing at the end of the next manage sequence. The state
+-- is saved exactly as for a restart, so the next window manager process
+-- started in this session (this binary or another build) picks up where
+-- this one left: river keeps the windows open in between.
+requestQuit :: X ()
+requestQuit = do
+  modify $ \s -> s { quitting = True }
+  g <- asks globals
+  withConn (\c -> riverWindowManagerV1ManageDirty c (gWm g))
+
 restartStateFile :: IO FilePath
 restartStateFile = do
   dir <- fromMaybe "/tmp" <$> lookupEnv "XDG_RUNTIME_DIR"
@@ -671,7 +688,7 @@ type FloatS = Maybe (Rational, Rational, Rational, Rational)
 -- | What survives a restart: the current workspace, each window's workspace
 -- and floating geometry (by river identifier), every workspace's layout and
 -- the persistent extensible state.
-type SavedState = (WorkspaceId, [(String, WorkspaceId, FloatS, Int, Bool)], [(WorkspaceId, String)], [(String, String)])
+type SavedState = (WorkspaceId, [(String, WorkspaceId, FloatS, Int, Bool)], [(WorkspaceId, String)], [(String, String)], [WorkspaceId])
 
 data Restored = Restored
   { rsView    :: Maybe WorkspaceId
@@ -679,6 +696,7 @@ data Restored = Restored
   , rsOrder   :: M.Map String (Int, Bool)
   , rsLayouts :: [(WorkspaceId, String)]
   , rsExt     :: [(String, String)]
+  , rsTags    :: [WorkspaceId]  -- ^ the workspace list, in order (empty: use the configured one)
   }
 
 saveRestartState :: X ()
@@ -700,21 +718,37 @@ saveRestartState = do
                                      Left str -> Just str
                                      Right (PersistentExtension x) -> Just (show x)
                                      Right (StateExtension _) -> Nothing] ]
-      saved = (W.currentTag ws, entries, layouts, exts) :: SavedState
+  order <- workspaceTags
+  let saved = (W.currentTag ws, entries, layouts, exts, order) :: SavedState
   path <- io restartStateFile
   io $ void (E.try (writeFile path (show saved)) :: IO (Either E.IOException ()))
 
 loadRestartState :: IO Restored
 loadRestartState = do
   path <- restartStateFile
+  fresh <- stateIsFromThisSession path
   r <- E.try (readFile path >>= \s -> length s `seq` pure s) :: IO (Either E.IOException String)
   _ <- E.try (removeFile path) :: IO (Either E.IOException ())
   pure $ case r of
-    Right s | [(saved, "")] <- reads s ->
-      let (cur, es, ls, xs) = saved :: SavedState
+    Right s | fresh, [(saved, "")] <- reads s ->
+      let (cur, es, ls, xs, tags) = saved :: SavedState
       in Restored (Just cur) (M.fromList [ (ident, (t, mr)) | (ident, t, mr, _, _) <- es ])
-                  (M.fromList [ (ident, (p, f)) | (ident, _, _, p, f) <- es ]) ls xs
-    _ -> Restored Nothing M.empty M.empty [] []
+                  (M.fromList [ (ident, (p, f)) | (ident, _, _, p, f) <- es ]) ls xs tags
+    _ -> Restored Nothing M.empty M.empty [] [] []
+
+-- | The state file can outlive its session now that it is also written
+-- when the window manager is stopped: a later compositor may reuse the
+-- same display name. A file older than the compositor's socket belongs to
+-- an earlier session and is ignored.
+stateIsFromThisSession :: FilePath -> IO Bool
+stateIsFromThisSession path = do
+  dir <- fromMaybe "/tmp" <$> lookupEnv "XDG_RUNTIME_DIR"
+  disp <- fromMaybe "wayland-0" <$> lookupEnv "WAYLAND_DISPLAY"
+  let sock = if take 1 disp == "/" then disp else dir </> disp
+  r <- E.try $ do
+    haveSock <- doesPathExist sock
+    if haveSock then (>=) <$> getModificationTime path <*> getModificationTime sock else pure True
+  pure (either (\e -> const True (e :: E.IOException)) id r)
 
 -- | Re-apply saved layouts (parsed with the configured layout as template;
 -- if the configuration changed and they no longer parse, keep the default).
@@ -743,6 +777,16 @@ runIPCAction a = case a of
   IPCRestart -> requestRestart
   IPCNextKeyboardLayout -> nextKeyboardLayout
   IPCLogout -> logoutGracefully
+  IPCQuit -> requestQuit
+  IPCFocusWindow n -> focus (ObjectId n)
+  IPCShiftWindow n t -> do
+    let w = ObjectId n
+    ok <- gets (\s -> W.member w (windowset s) && W.tagMember t (windowset s))
+    when ok (windows (W.shiftWin t w))
+  IPCAddWorkspace t -> addHiddenWorkspace t
+  IPCRemoveWorkspace t -> removeEmptyWorkspaceByTag t
+  IPCRenameWorkspace old new -> renameWorkspace old new
+  IPCSetWorkspaces ts -> setWorkspaces ts
   IPCLogoutCheck n -> logoutTimedOut n
 
 -- | Publish the state to IPC subscribers (they only get it when it changes).
@@ -750,13 +794,13 @@ runIPCAction a = case a of
 -- @{"State":{"workspaces":[...],"focused_output":...,"title":...,"app_id":...}}@
 -- Each workspace: name, idx (1-based, configuration order first), output
 -- (connector name or null), focused, visible, windows, layout, extra (not
--- in the configured workspaces, e.g. the scratchpad one).
+-- in the workspace list, e.g. the scratchpad one).
 publishState :: X ()
 publishState = do
   ws <- gets windowset
   infos <- gets windowInfo
   outs <- gets outputs
-  tags <- asks (workspaces . config)
+  tags <- workspaceTags
   publish <- asks ipcPublish
   have <- gets haveScreens
   kbl <- currentKeyboardLayout
@@ -784,3 +828,76 @@ publishState = do
         , ("app_id", maybe J.JNull (J.str . wiAppId) focusedInfo)
         , ("keyboard_layout", maybe J.JNull J.str kbl) ]) ]
   io (publish (J.renderUtf8 state))
+
+-- | Store the reply to IPC @"Snapshot"@ requests: every workspace of the
+-- workspace list with its windows and their geometry, for pagers.
+--
+-- @{"Snapshot":{"screen":{"x":..,"y":..,"width":..,"height":..},"workspaces":[...]}}@
+-- Each workspace: name, focused, visible, layout, windows. Each window: id
+-- (what @FocusWindow@ and @ShiftWindow@ take; only valid until the window
+-- manager restarts), identifier (river's, stable), title, app_id, x, y,
+-- width, height, focused (the one its workspace would focus), floating,
+-- fullscreen. Windows of a hidden workspace are placed where its layout
+-- would put them on the focused screen.
+publishSnapshot :: X ()
+publishSnapshot = do
+  ws <- gets windowset
+  infos <- gets windowInfo
+  outs <- gets outputs
+  fs <- gets fullscreen
+  have <- gets haveScreens
+  tags <- workspaceTags
+  store <- asks ipcSnapshot
+  let curSd = W.screenDetail (W.current ws)
+      usable = sdRect curSd
+      -- The whole output, bars included, when river told us about it.
+      full = fromMaybe usable $ do
+        oi <- M.lookup (sdOutput curSd) outs
+        (x, y) <- oiPos oi
+        (w, h) <- oiDims oi
+        pure (Rectangle x y w h)
+      flt = W.floating ws
+      byTag = M.fromList [ (W.tag w, w) | w <- W.workspaces ws ]
+      shown = M.fromList [ (W.tag (W.workspace s), W.screenDetail s) | have, s <- W.screens ws ]
+      num = J.JNum . fromIntegral
+      rectJson (Rectangle x y w h) = [ ("x", num x), ("y", num y), ("width", num w), ("height", num h) ]
+  wsJs <- forM [ w | t <- tags, Just w <- [M.lookup t byTag] ] $ \wsp -> do
+    let t = W.tag wsp
+        visible = M.member t shown
+        area = maybe usable sdRect (M.lookup t shown)
+    planned <- if visible then pure M.empty else wouldLayout wsp usable
+    let geom w = fromMaybe area $
+          if visible then M.lookup w infos >>= wiGeom
+          else case M.lookup w planned of
+            Just r -> Just r
+            Nothing -> M.lookup w infos >>= wiGeom
+        winJson w = J.obj $
+          [ ("id", J.JNum (fromIntegral (unObjectId w)))
+          , ("identifier", J.str (maybe "" wiIdentifier (M.lookup w infos)))
+          , ("title", J.str (maybe "" wiTitle (M.lookup w infos)))
+          , ("app_id", J.str (maybe "" wiAppId (M.lookup w infos))) ]
+          ++ rectJson (geom w) ++
+          [ ("focused", J.JBool (fmap W.focus (W.stack wsp) == Just w))
+          , ("floating", J.JBool (M.member w flt))
+          , ("fullscreen", J.JBool (S.member w fs)) ]
+    pure $ J.obj
+      [ ("name", J.str t)
+      , ("focused", J.JBool (have && t == W.currentTag ws))
+      , ("visible", J.JBool visible)
+      , ("layout", J.str (description (W.layout wsp)))
+      , ("windows", J.JArr (map winJson (W.integrate' (W.stack wsp)))) ]
+  io $ store $ J.renderUtf8 $ J.obj [ ("Snapshot", J.obj
+    [ ("screen", J.obj (rectJson full))
+    , ("workspaces", J.JArr wsJs) ]) ]
+
+-- | Where a workspace's layout would put its windows in a rectangle,
+-- without changing anything: state changes made by the layout are dropped.
+wouldLayout :: WindowSpace -> Rectangle -> X (M.Map Window Rectangle)
+wouldLayout wsp r = do
+  st <- get
+  let flt = W.floating (windowset st)
+      tiledWs = wsp { W.stack = W.stack wsp >>= W.filter (`M.notMember` flt) }
+      floats = [ (w, fromRationalRect r rr) | w <- W.integrate' (W.stack wsp), Just rr <- [M.lookup w flt] ]
+  (tiled, _) <- userCodeDef ([], Nothing) (runLayout tiledWs r)
+  put st
+  pure (M.fromList (floats ++ tiled))
