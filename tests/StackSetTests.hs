@@ -6,10 +6,18 @@ import Data.List (nub, sort)
 import qualified Data.Map as M
 import System.Exit (exitFailure)
 
+import Rivermonad.Actions.DynamicWorkspaces (Plan (..), addHidden, plan, removeEmpty, renameTag')
 import Rivermonad.Config (defaultConfig)
+import Rivermonad.Core (IPCAction (..), Window, readsLayout)
+import Rivermonad.Hooks.RefocusLast (refocusLastLayoutHook)
+import Rivermonad.IPC (parseAction)
+import qualified Rivermonad.JSON as J
 import Rivermonad.Keysym
 import Rivermonad.Layout
+import Rivermonad.Layout.FocusTracking (focusOn, focusTracking)
+import Rivermonad.Layout.Gaps (Direction2D (..), applyGaps, gaps)
 import Rivermonad.Layout.Grid (arrange)
+import Rivermonad.Layout.NoBorders (noBorders)
 import Rivermonad.Layout.LayoutModifier (LayoutModifier (..))
 import Rivermonad.Layout.Spacing (Spacing (..))
 import Rivermonad.Layout.ResizableTile (ResizableTall (..))
@@ -69,10 +77,47 @@ main = do
     , check "ResizableTall honours relative heights" (map (rect_height . snd) resizable == [800, 200, 600])
     , check "gapsWithEdge 1: one pixel between windows and to every edge" gapsOk
     , check "mirrorRect is an involution" (mirrorRect (mirrorRect (Rectangle 1 2 3 4)) == Rectangle 1 2 3 4)
+    , check "EZConfig: modifier keys are keys" (readKey defaultConfig "<Super_R>" == Just (0, xK_Super_R)
+                                               && readKey defaultConfig "C-S-<Super_R>" == Just (controlMask + shiftMask, xK_Super_R))
+    , check "Gaps: one size per edge" (applyGaps [(U, 10), (R, 20), (D, 30), (L, 40)] area == Rectangle 40 10 940 760)
+    , check "Gaps: never below one pixel" (let Rectangle _ _ w h = applyGaps [(L, 5000), (R, 5000), (U, 5000)] area in w == 1 && h == 1)
+    , check "focusOn keeps the order" (fmap W.integrate (W.differentiate [1, 2, 3 :: Int] >>= focusOn 3) == Just [1, 2, 3]
+                                       && fmap W.focus (W.differentiate [1, 2, 3 :: Int] >>= focusOn 3) == Just 3
+                                       && (W.differentiate [1, 2 :: Int] >>= focusOn 9) == Nothing)
+    , check "a layout with all modifiers round-trips through Read" modifiersRoundTrip
+    , check "addHidden appends once" (map W.tag (W.workspaces (addHidden () "x" (addHidden () "x" fresh))) == ["1", "2", "3", "x"])
+    , check "removeEmpty drops a hidden workspace" (fmap (map W.tag . W.workspaces) (removeEmpty "3" fresh) == Just ["1", "2"])
+    , check "removeEmpty replaces a workspace that is on screen" (fmap W.currentTag (removeEmpty "1" fresh) == Just "3"
+                                                                 && fmap invariant2 (removeEmpty "1" fresh) == Just True)
+    , check "removeEmpty needs a replacement for a workspace on screen" (removeEmpty "1" two == Nothing)
+    , check "removeEmpty keeps workspaces with windows" (removeEmpty "1" s1 == Nothing && removeEmpty "nope" fresh == Nothing)
+    , check "renameTag' renames" (map W.tag (W.workspaces (renameTag' "2" "web" fresh)) == ["1", "web", "3"])
+    , check "plan: a name replaced in place is a rename" (plan ["1", "2", "3"] ["1", "web", "3"] == Plan [("2", "web")] [] [])
+    , check "plan: additions and removals" (plan ["1", "2", "3"] ["1", "3", "mail"] == Plan [] ["mail"] ["2"])
+    , check "plan: reordering changes nothing" (plan ["1", "2", "3"] ["3", "1", "2"] == Plan [] [] [])
+    , check "plan: rename and removal together" (plan ["1", "www", "mail", "chat", "3"] ["1", "web", "chat", "3"] == Plan [("www", "web")] [] ["mail"])
+    , check "IPC: workspace and window actions parse" ipcOk
     ]
   unless (and rs) exitFailure
   where
     area = Rectangle 0 0 1000 800
+    two = W.new () ["1", "2"] [(), ()] :: T
+    invariant2 s = sort (map W.tag (W.workspaces s)) == ["2", "3"]
+    modifiersRoundTrip =
+      let l = Layout (refocusLastLayoutHook (gaps [(U, 20), (L, 3)] (ResizableTall 1 (1 / 20) (1 / 2) [] ||| noBorders (focusTracking Full)))) :: Layout Window
+      in case readsLayout l (show l) of
+           [(l', rest)] -> all (== ' ') rest && show l' == show l
+           _ -> False
+    act str = J.parse str >>= parseAction
+    ipcOk = act "{\"ShiftWindow\":[7,\"mail\"]}" == Just (IPCShiftWindow 7 "mail")
+         && act "{\"ShiftWindow\":[7.5,\"mail\"]}" == Nothing
+         && act "{\"FocusWindow\":4278190080}" == Just (IPCFocusWindow 4278190080)
+         && act "{\"SetWorkspaces\":[\"1\",\"web\"]}" == Just (IPCSetWorkspaces ["1", "web"])
+         && act "{\"SetWorkspaces\":[\"1\",2]}" == Nothing
+         && act "{\"RenameWorkspace\":[\"2\",\"web\"]}" == Just (IPCRenameWorkspace "2" "web")
+         && act "{\"AddWorkspace\":\"mail\"}" == Just (IPCAddWorkspace "mail")
+         && act "{\"RemoveWorkspace\":\"mail\"}" == Just (IPCRemoveWorkspace "mail")
+         && act "\"Quit\"" == Just IPCQuit
     -- gapsWithEdge 1 on two Tall windows: the screen is inset (1,1,0,0),
     -- every window (0,0,1,1).
     gapsOk =
