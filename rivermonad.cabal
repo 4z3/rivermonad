@@ -42,12 +42,15 @@ library
     Rivermonad.Core
     Rivermonad.Engine
     Rivermonad.Hooks.InsertPosition
+    Rivermonad.Hooks.RefocusLast
     Rivermonad.Hooks.ManageHelpers
     Rivermonad.Hooks.StatusBar
     Rivermonad.IPC
     Rivermonad.Input
     Rivermonad.Keysym
     Rivermonad.Layout
+    Rivermonad.Layout.FocusTracking
+    Rivermonad.Layout.Gaps
     Rivermonad.Layout.Grid
     Rivermonad.Layout.LayoutModifier
     Rivermonad.Layout.NoBorders

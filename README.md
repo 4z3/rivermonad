@@ -91,6 +91,7 @@ the `XMonad.` prefix replaced by `Rivermonad.`:
 | `Rivermonad.Actions.DynamicWorkspaces` | `addWorkspace`, `removeEmptyWorkspace`, `renameWorkspace`, `setWorkspaces`; the list survives restarts |
 | `Rivermonad.Hooks.ManageHelpers` | `composeOne`, `-?>`, `doRectFloat`, `doFullFloat`, `transience` |
 | `Rivermonad.Hooks.InsertPosition` | `insertPosition Below Newer` |
+| `Rivermonad.Hooks.RefocusLast` | `refocusLastLayoutHook`, `toggleFocus`: jump back to the window focused before |
 | `Rivermonad.Hooks.StatusBar` | status line for waybar (see below) |
 | `Rivermonad.Layout.LayoutModifier` | write your own layout modifiers |
 | `Rivermonad.Layout.NoBorders` | `noBorders`, `smartBorders` |
@@ -98,6 +99,8 @@ the `XMonad.` prefix replaced by `Rivermonad.`:
 | `Rivermonad.Layout.ToggleLayouts` | `toggleLayouts (noBorders Full) myLayouts` |
 | `Rivermonad.Layout.PerWorkspace` | `onWorkspace "web" Full myLayouts` |
 | `Rivermonad.Layout.ThreeColumns` | `ThreeCol`, `ThreeColMid` |
+| `Rivermonad.Layout.FocusTracking` | `focusTracking`: keep showing the last focused tiled window under a focused float |
+| `Rivermonad.Layout.Gaps` | `gaps [(U, 18), (R, 23)]`: fixed gaps at the screen edges, `ToggleGaps` |
 | `Rivermonad.Layout.Grid` | `Grid` |
 | `Rivermonad.Layout.ResizableTile` | `ResizableTall` with `MirrorShrink`/`MirrorExpand` |
 
